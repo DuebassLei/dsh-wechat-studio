@@ -1,0 +1,34 @@
+{
+  "name": "dsh-wechat-studio",
+  "version": "0.1.0",
+  "description": "DeepSeek Harness 插件「公众号成稿台」：写稿、按段改稿、朱雀报告质检、公众号排版预览和一键复制。",
+  "type": "module",
+  "main": "src/host.js",
+  "exports": {
+    ".": "./src/host.js",
+    "./client": "./dist/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": { "platform": "web", "inject": ["@deepseek-ai/dsh-client-runtime"] }
+  },
+  "engines": { "node": ">=20", "dsh": ">=0.2.1-rc.5 <0.3.0" },
+  "keywords": ["dsh", "deepseek-harness", "dsh-plugin", "wechat"],
+  "license": "MIT",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "watch": "node scripts/build.mjs --watch",
+    "dev": "node scripts/dev.mjs",
+    "test": "node --test test/*.test.js",
+    "prepack": "npm run build"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.10",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "unpdf": "^1.4.0"
+  },
+  "files": ["src", "dist", "skills", "vendor", "cordis.patch.yml", "README.md", "LICENSE"]
+}

@@ -1,0 +1,239 @@
+// 文章模型：Markdown 按段切成块，所有修改都落到某一块上，改一段不会碰到别的段。
+let counter = 0
+export function newId(prefix = 'b') {
+  counter += 1
+  return `${prefix}_${Date.now().toString(36)}${counter.toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`
+}
+
+const HISTORY_MAX = 20
+
+/**
+ * 把 Markdown 切成 front matter、标题和正文块。代码块内部的空行不切。
+ * @param {string} markdown - 原文。
+ * @returns {{front: string, title: string, blocks: string[]}} 切分结果。
+ */
+export function splitMarkdown(markdown) {
+  let text = String(markdown ?? '').replace(/\r\n?/g, '\n')
+  let front = ''
+  const fm = /^---\n[\s\S]*?\n---\n?/.exec(text)
+  if (fm) {
+    front = fm[0].trim()
+    text = text.slice(fm[0].length)
+  }
+  const blocks = []
+  let current = []
+  let fence = null
+  const flush = () => {
+    const joined = current.join('\n').replace(/\s+$/, '')
+    if (joined.trim()) blocks.push(joined)
+    current = []
+  }
+  for (const line of text.split('\n')) {
+    const mark = /^\s*(```+|~~~+)/.exec(line)
+    if (mark) {
+      if (!fence) fence = mark[1][0]
+      else if (mark[1][0] === fence) fence = null
+      current.push(line)
+      continue
+    }
+    if (!fence && !line.trim()) flush()
+    else current.push(line)
+  }
+  flush()
+  let title = ''
+  const head = blocks.findIndex(b => /^#\s+\S/.test(b) && !b.includes('\n'))
+  if (head !== -1) title = blocks.splice(head, 1)[0].replace(/^#\s+/, '').trim()
+  return { front, title, blocks }
+}
+
+export function blockKind(text) {
+  if (/^\s*(```|~~~)/.test(text)) return 'code'
+  if (/^#{2,6}\s/.test(text)) return 'heading'
+  if (/^>\s?/.test(text)) return 'quote'
+  if (/^!\[[^\]]*\]\([^)]*\)\s*$/.test(text) || /^\[[^\]]+\.(mp4|mov)\]\s*$/i.test(text)) return 'media'
+  if (/^\|.*\|\s*$/m.test(text) && /^\|?\s*:?-{2,}/m.test(text)) return 'table'
+  if (/^\s*([-*+]|\d+[.)])\s/.test(text)) return 'list'
+  if (/^(-{3,}|\*{3,})\s*$/.test(text)) return 'rule'
+  return 'para'
+}
+
+/** 去掉 Markdown 记号后的纯文字，用来和朱雀报告对段落。 */
+export function plainOf(text) {
+  return String(text)
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/^\s*>\s?(\[![A-Z]+\]\s*)?/gm, '')
+    .replace(/^\s*([-*+]|\d+[.)])\s+/gm, '')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/(\*\*|==|\+\+|`|<\/?u>)/g, '')
+    .trim()
+}
+
+/** 这一块要不要参加 AI 味质检：只看成段的文字。 */
+export function isCheckable(text) {
+  const kind = blockKind(text)
+  return ['para', 'quote', 'list'].includes(kind) && plainOf(text).length >= 20
+}
+
+export function createArticle({ topic = '', material = '', markdown = '' } = {}) {
+  const parsed = splitMarkdown(markdown)
+  const now = new Date().toISOString()
+  return {
+    id: newId('a'), createdAt: now, updatedAt: now,
+    topic: String(topic).trim().slice(0, 400), material: String(material).slice(0, 60000),
+    front: parsed.front, title: parsed.title, titles: [], summary: '',
+    blocks: parsed.blocks.map(text => ({ id: newId(), text, check: null })),
+    chat: [], history: [], zhuque: { round: 0, lastAt: null },
+  }
+}
+
+export function setBody(article, markdown) {
+  const parsed = splitMarkdown(markdown)
+  if (parsed.front) article.front = parsed.front
+  if (parsed.title) article.title = parsed.title
+  article.blocks = parsed.blocks.map(text => ({ id: newId(), text, check: null }))
+}
+
+export function toMarkdown(article) {
+  const parts = []
+  if (article.front) parts.push(article.front)
+  if (article.title) parts.push(`# ${article.title}`)
+  for (const block of article.blocks) parts.push(block.text)
+  return `${parts.join('\n\n')}\n`
+}
+
+/** 改动前存一份快照，供撤销。 */
+export function snapshot(article, label) {
+  article.history.push({ label, at: new Date().toISOString(), title: article.title, titles: structuredClone(article.titles), blocks: structuredClone(article.blocks) })
+  if (article.history.length > HISTORY_MAX) article.history.splice(0, article.history.length - HISTORY_MAX)
+}
+
+export function undo(article) {
+  const last = article.history.pop()
+  if (!last) return null
+  article.title = last.title
+  article.titles = last.titles
+  article.blocks = last.blocks
+  touch(article)
+  return last.label
+}
+
+export function touch(article) {
+  article.updatedAt = new Date().toISOString()
+}
+
+const text = (value, max) => (typeof value === 'string' ? value.replace(/\r\n?/g, '\n').trim().slice(0, max) : '')
+
+/**
+ * 把模型给的修改落到文章上。模型输出不可信：只认白名单里的操作和字段，段号越界的直接丢弃。
+ * 段号是 1 起的、按当前顺序数的；为了让一批操作里的段号都指向修改前的位置，先解析成块 id 再执行。
+ * @param {object} article - 文章，会被就地修改。
+ * @param {Array<object>} ops - 操作列表。
+ * @returns {{receipts: string[], changed: number[]}} 回执和被改到的段号。
+ */
+export function applyOps(article, ops) {
+  const receipts = []
+  const changed = []
+  const list = Array.isArray(ops) ? ops.slice(0, 40) : []
+  const resolved = list.map(op => {
+    const index = Number.isInteger(op?.block) ? op.block - 1 : -1
+    return { op, target: article.blocks[index] ?? null, no: index + 1 }
+  })
+  for (const { op, target, no } of resolved) {
+    const kind = op?.op
+    if (kind === 'title') {
+      const value = text(op.text, 80)
+      if (value && value !== article.title) {
+        article.title = value
+        receipts.push(`标题改成《${value}》`)
+      }
+    } else if (kind === 'titles') {
+      const values = (Array.isArray(op.list) ? op.list : []).map(v => text(typeof v === 'string' ? v : v?.text, 80)).filter(Boolean).slice(0, 8)
+      if (values.length) {
+        article.titles = values.map(value => ({ text: value }))
+        receipts.push(`重写了 ${values.length} 个标题候选`)
+      }
+    } else if (kind === 'rewrite' && target) {
+      const value = text(op.text, 20000)
+      if (value && value !== target.text) {
+        target.text = value
+        target.check = null
+        changed.push(no)
+        receipts.push(`改写第 ${no} 段`)
+      }
+    } else if (kind === 'insert_after' && (target || op.block === 0)) {
+      const value = text(op.text, 20000)
+      if (value) {
+        const at = target ? article.blocks.indexOf(target) + 1 : 0
+        article.blocks.splice(at, 0, { id: newId(), text: value, check: null })
+        receipts.push(target ? `在第 ${no} 段后面加了一段` : '在开头加了一段')
+      }
+    } else if (kind === 'delete' && target) {
+      const at = article.blocks.indexOf(target)
+      if (at !== -1) {
+        article.blocks.splice(at, 1)
+        receipts.push(`删掉第 ${no} 段`)
+      }
+    }
+  }
+  if (receipts.length) touch(article)
+  return { receipts, changed }
+}
+
+/** 带段号的正文，喂给模型时用。 */
+export function numbered(article) {
+  return article.blocks.map((block, index) => `【${index + 1}】${block.text}`).join('\n\n')
+}
+
+export function listMeta(article) {
+  const chars = article.blocks.reduce((sum, block) => sum + plainOf(block.text).length, 0)
+  return { id: article.id, title: article.title || article.topic || '未命名文章', updatedAt: article.updatedAt, chars }
+}
+
+/**
+ * 一键处理要改哪些段。照 zhuque skill 的规矩跳过三种：改过两轮的（留给作者自己重说）、
+ * 改完结论反而更重的（该退回上一版）、PDF 报告里 0.5–0.6 噪声带的。
+ * @param {object} article - 文章。
+ * @returns {{picked: number[], skipped: {twice: number, worse: number, noise: number}}} 要改的段（下标 0 起）和跳过的数目。
+ */
+export function fixPlan(article) {
+  const picked = []
+  const skipped = { twice: 0, worse: 0, noise: 0 }
+  article.blocks.forEach((block, index) => {
+    const check = block.check
+    if (check?.status !== 'flag') return
+    if (check.worse) skipped.worse += 1
+    else if ((check.fixes ?? 0) >= 2) skipped.twice += 1
+    else if (check.source !== 'api' && check.level !== 'ai' && check.score < 0.6) skipped.noise += 1
+    else picked.push(index)
+  })
+  return { picked, skipped }
+}
+
+/**
+ * 把要改的段按相邻关系分组：朱雀常把几段短段落判成一个片段，并列、对仗这类问题也常跨段，
+ * 一起改才看得到。中间隔着一个标题或图片就断开。每组最多 5 段、约 900 字。
+ * 排序照 skill 第 3 步：含 AI 特征的组先改，再按分数从高到低。
+ * @param {object} article - 文章。
+ * @param {number[]} picked - fixPlan 选出的段（下标 0 起，升序）。
+ * @returns {number[][]} 分好的组。
+ */
+export function fixGroups(article, picked, { maxBlocks = 5, maxChars = 900 } = {}) {
+  const groups = []
+  let current = []
+  let chars = 0
+  for (const index of picked) {
+    const size = plainOf(article.blocks[index].text).length
+    const adjacent = current.length && index === current.at(-1) + 1
+    if (current.length && (!adjacent || current.length >= maxBlocks || chars + size > maxChars)) {
+      groups.push(current)
+      current = []
+      chars = 0
+    }
+    current.push(index)
+    chars += size
+  }
+  if (current.length) groups.push(current)
+  const weight = group => Math.max(...group.map(i => (article.blocks[i].check.level === 'ai' ? 2 : 1) + (article.blocks[i].check.score ?? 0)))
+  return groups.sort((a, b) => weight(b) - weight(a))
+}

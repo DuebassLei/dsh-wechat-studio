@@ -1,0 +1,417 @@
+import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
+import { mkdtempSync, readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { test } from 'node:test'
+import { cleanMarkdown, extractJson, listModels, loadSkill, modelInfo, setModelOverride } from '../src/ai.js'
+import { applyOps, blockKind, createArticle, fixGroups, fixPlan, isCheckable, snapshot, splitMarkdown, toMarkdown, undo } from '../src/article.js'
+import { checkBanner, detectionText, renderLayout } from '../src/layout.js'
+import { bannerGuide, normalizeSpec } from '../src/banner.js'
+import { markBlocks, pdfToText } from '../src/report.js'
+import { Pipeline } from '../src/pipeline.js'
+import { Store } from '../src/store.js'
+import { publicSettings, readSettings, updateSettings } from '../src/settings.js'
+import { DEFAULT_ENDPOINT, detect, mapSegments } from '../src/zhuque.js'
+
+const MD = `---
+slug: demo
+---
+
+# 标题在这里
+
+第一段，写得足够长，才会参加检测，所以这里多写几个字凑够二十个字。
+
+## 小节
+
+\`\`\`bash
+echo one
+
+echo two
+\`\`\`
+
+第二段同样要够长，朱雀按片段打分，太短的段落不参加质检流程。
+
+- 列表一
+- 列表二
+`
+
+test('切分：front matter、标题单独取出，代码块里的空行不切', () => {
+  const { front, title, blocks } = splitMarkdown(MD)
+  assert.match(front, /slug: demo/)
+  assert.equal(title, '标题在这里')
+  assert.equal(blocks.length, 5)
+  assert.equal(blockKind(blocks[2]), 'code')
+  assert.match(blocks[2], /echo one\n\necho two/)
+  assert.deepEqual(blocks.map(blockKind), ['para', 'heading', 'code', 'para', 'list'])
+})
+
+test('切分再拼回去，内容不丢', () => {
+  const article = createArticle({ markdown: MD })
+  assert.equal(toMarkdown(article).trim(), MD.trim())
+})
+
+test('只有成段的文字参加质检', () => {
+  const { blocks } = splitMarkdown(MD)
+  assert.deepEqual(blocks.map(isCheckable), [true, false, false, true, false])
+})
+
+test('applyOps：只动点名的段，段号指修改前的位置，越界和未知操作丢弃', () => {
+  const article = createArticle({ markdown: MD })
+  const before = article.blocks.map(b => b.text)
+  const { receipts, changed } = applyOps(article, [
+    { op: 'delete', block: 2 },
+    { op: 'rewrite', block: 4, text: '改过的第二段' },
+    { op: 'rewrite', block: 99, text: '越界' },
+    { op: 'drop_table', block: 1 },
+    { op: 'title', text: '新标题' },
+  ])
+  assert.deepEqual(changed, [4])
+  assert.equal(receipts.length, 3)
+  assert.equal(article.title, '新标题')
+  assert.deepEqual(article.blocks.map(b => b.text), [before[0], before[2], '改过的第二段', before[4]])
+})
+
+test('撤销回到改动前', () => {
+  const article = createArticle({ markdown: MD })
+  const before = toMarkdown(article)
+  snapshot(article, '测试')
+  applyOps(article, [{ op: 'rewrite', block: 1, text: '变了' }, { op: 'title', text: '也变了' }])
+  assert.notEqual(toMarkdown(article), before)
+  assert.equal(undo(article), '测试')
+  assert.equal(toMarkdown(article), before)
+  assert.equal(undo(article), null)
+})
+
+test('extractJson 容忍代码块和前后说明', () => {
+  assert.deepEqual(extractJson('好的：\n```json\n{"a":1}\n```\n完毕'), { a: 1 })
+  assert.deepEqual(extractJson('结果是 {"ops":[{"op":"delete","block":1}]} 就这些'), { ops: [{ op: 'delete', block: 1 }] })
+  assert.equal(extractJson('没有 JSON'), null)
+  assert.equal(cleanMarkdown('```markdown\n# 标题\n\n正文\n```'), '# 标题\n\n正文')
+})
+
+test('四份 skill 都能读到，front matter 已去掉', async () => {
+  for (const name of ['writer', 'headline', 'humanizer', 'zhuque', 'banner']) {
+    const text = await loadSkill(name)
+    assert.ok(text.length > 500, name)
+    assert.ok(!text.startsWith('---'), name)
+  }
+  await assert.rejects(loadSkill('../package'))
+})
+
+test('朱雀结果落到段落：标红、通过、噪声带和「越改越差」', () => {
+  const article = createArticle({ markdown: MD })
+  const first = markBlocks(article, { overall: { human: 60, suspect: 40, ai: null }, segments: [{ block: 1, score: 0.93 }, { block: 3, score: 1 }, { block: 9, score: 0.9 }, { block: 4, score: 0.2 }] })
+  assert.deepEqual(first, { flagged: 1, passed: 1, unmatched: 0, overall: { human: 60, suspect: 40, ai: null } })
+  assert.equal(article.blocks[0].check.status, 'flag')
+  assert.equal(article.blocks[0].check.level, 'suspect')
+  assert.equal(article.blocks[2].check, null, '代码块不参加质检')
+  assert.equal(article.blocks[3].check.status, 'pass')
+  assert.equal(article.zhuque.round, 1)
+
+  article.blocks[0].prev = article.blocks[0].text
+  article.blocks[0].check = { status: 'fixed', score: 0.93, round: 1, fixes: 1 }
+  markBlocks(article, { segments: [{ block: 1, score: 0.99 }] })
+  assert.equal(article.blocks[0].check.worse, true)
+  assert.equal(article.blocks[0].check.level, 'ai')
+  assert.equal(article.blocks[0].check.fixes, 1)
+  assert.equal(article.zhuque.round, 2)
+})
+
+test('排版脚本能跑，检测文本去掉了记号和固定句', async () => {
+  const { html, report } = await renderLayout(MD, { style: 'neo', theme: 'navy' })
+  assert.match(html, /<html/i)
+  assert.match(report, /统计/)
+  const plain = await detectionText(`${MD}\n关注「某某」设为「星标」\n`, ['设为「星标」'])
+  assert.ok(!plain.includes('#') && !plain.includes('slug:') && !plain.includes('星标'))
+  assert.match(plain, /第一段/)
+})
+
+test('PDF 取文字：pdftotext 和打包的 unpdf 都走得通', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ws-test-'))
+  const html = join(dir, 'r.html')
+  const pdf = join(dir, 'r.pdf')
+  execFileSync('python3', ['-c', `open(${JSON.stringify(html)},'w').write('<meta charset=utf-8><p>AIGC 0.93 fragment one</p>')`])
+  try {
+    execFileSync('google-chrome', ['--headless', '--no-sandbox', '--disable-gpu', `--print-to-pdf=${pdf}`, html], { stdio: 'ignore' })
+  } catch {
+    return // 没有 Chrome 的机器上跳过
+  }
+  const buffer = readFileSync(pdf)
+  assert.match(await pdfToText(buffer), /0\.93/)
+  const { extractText, getDocumentProxy } = await import('../dist/unpdf.mjs')
+  const { text } = await extractText(await getDocumentProxy(new Uint8Array(buffer)), { mergePages: true })
+  assert.match(text, /0\.93/)
+  await assert.rejects(pdfToText(Buffer.from('not a pdf')), /不是 PDF/)
+})
+
+test('流水线：写正文 → 出标题 → 对话改稿 → 读报告 → 改标红段', async () => {
+  const store = new Store(mkdtempSync(join(tmpdir(), 'ws-store-')))
+  const answers = {
+    draft: '# 草稿标题\n\n第一段，写得足够长，才会参加检测，所以这里多写几个字凑够二十个字。\n\n第二段同样要够长，朱雀按片段打分，太短的段落不参加质检流程。',
+    titles: '{"titles":["标题甲","标题乙"],"summary":"摘要"}',
+    chat: '{"reply":"改了","ops":[{"op":"rewrite","block":2,"text":"第二段被对话改过了，这里也要写够二十个字才算数的。"}]}',
+    report: '{"overall":null,"segments":[{"block":1,"score":0.97}]}',
+    fix: '第一段改写后的样子。',
+  }
+  const llm = { prepareCall: async () => ({ config: {}, async *stream({ messages }) { yield { type: 'text-delta', text: answers[messages[0].source.task] }; yield { type: 'finish', reason: { kind: 'stop' } } } }) }
+  const services = { llm, agentDefaultModel: { currentSelection: () => ({ provider: 'p', model: 'm' }) } }
+  const pipeline = new Pipeline({ ctx: { get: name => services[name] }, store })
+  const article = createArticle({ topic: '选题' })
+  await store.update(state => { state.articles.push(article); state.currentId = article.id })
+
+  await pipeline.draft(article.id)
+  let saved = (await store.read()).articles[0]
+  assert.equal(saved.title, '草稿标题')
+  assert.equal(saved.blocks.length, 2)
+  assert.deepEqual(saved.titles.map(t => t.text), ['标题甲', '标题乙'])
+
+  const untouched = saved.blocks[0].text
+  await pipeline.chat(article.id, '第 2 段改一下')
+  saved = (await store.read()).articles[0]
+  assert.equal(saved.blocks[0].text, untouched)
+  assert.match(saved.blocks[1].text, /对话改过/)
+  assert.deepEqual(saved.chat.at(-1).receipts, ['改写第 2 段'])
+
+  await pipeline.report(article.id, '报告文字')
+  saved = (await store.read()).articles[0]
+  assert.equal(saved.blocks[0].check.status, 'flag')
+  assert.equal(saved.blocks[1].check.status, 'pass')
+
+  await pipeline.fix(article.id, saved.blocks[0].id)
+  saved = (await store.read()).articles[0]
+  assert.equal(saved.blocks[0].text, '第一段改写后的样子。')
+  assert.equal(saved.blocks[0].prev, untouched)
+  assert.equal(saved.blocks[0].check.status, 'fixed')
+  assert.equal(saved.notice ?? null, saved.notice?.error ? 'error' : saved.notice ?? null)
+  assert.ok(!saved.notice?.error, saved.notice?.text)
+  assert.equal(pipeline.job(article.id), null)
+})
+
+const POSTER = { slug: 'x', title: 't', style: 'poster', poster: { eyebrow: 'AI 实测', title1: '排版这件事', title2: '交给流程', right: 'flow', ask: '帮我排好', result: '排好了', tags: ['一', '二', '三'], big: 'AI' } }
+
+test('横幅规则：每种风格只取自己那一节', async () => {
+  const skill = await loadSkill('banner')
+  const poster = bannerGuide(skill, 'poster')
+  assert.match(poster, /大字海报/)
+  assert.doesNotMatch(poster, /十种场景模板/)
+  assert.match(bannerGuide(skill, 'card'), /右栏 12 种版式/)
+  assert.match(bannerGuide(skill, 'scene'), /pipeline/)
+  assert.throws(() => bannerGuide(skill, 'nope'))
+})
+
+test('横幅规格：风格由我们定，theme 去掉，结构不对返回 null', () => {
+  const spec = normalizeSpec({ ...POSTER, style: 'card', poster: { ...POSTER.poster, theme: 'blue' } }, 'poster')
+  assert.equal(spec.style, 'poster')
+  assert.equal(spec.poster.theme, undefined)
+  assert.equal(normalizeSpec({ card: {} }, 'poster'), null)
+  assert.equal(normalizeSpec({ scene: { items: [] } }, 'scene'), null)
+  assert.equal(normalizeSpec('x', 'poster'), null)
+  assert.equal(normalizeSpec({ scene: { layout: 'path' }, caption: 'c' }, 'scene').style, undefined)
+})
+
+test('横幅检查和排版：超字数会被查出来，合格的规格画进页面', async () => {
+  assert.deepEqual(await checkBanner(POSTER), [])
+  const long = await checkBanner({ ...POSTER, poster: { ...POSTER.poster, title1: '这一行标题明显写得太长了吧' } })
+  assert.equal(long.length, 1)
+  assert.match(long[0], /标题第一行/)
+  const broken = await checkBanner({ style: 'poster', poster: null })
+  assert.ok(broken.length >= 1)
+  const { html } = await renderLayout(MD, { banner: POSTER })
+  assert.match(html, /"banner": \{"orange": "<svg/, '每种配色都有一份横幅')
+  assert.match(html, /"banner_neo": \{"orange": "<svg/, '正文切到质感时有质感版横幅')
+  const { html: plain } = await renderLayout(MD)
+  assert.match(plain, /"banner":\s*null/)
+})
+
+test('流水线：横幅超字数时让模型照着问题改一次', async () => {
+  const store = new Store(mkdtempSync(join(tmpdir(), 'ws-banner-')))
+  const calls = []
+  const bad = { ...POSTER, poster: { ...POSTER.poster, title1: '这一行标题明显写得太长了吧' } }
+  const llm = { prepareCall: async () => ({ config: {}, async *stream({ messages }) { calls.push(messages[0].content[0].text); yield { type: 'text-delta', text: JSON.stringify(calls.length === 1 ? bad : POSTER) }; yield { type: 'finish', reason: { kind: 'stop' } } } }) }
+  const services = { llm, agentDefaultModel: { currentSelection: () => ({ provider: 'p', model: 'm' }) } }
+  const pipeline = new Pipeline({ ctx: { get: name => services[name] }, store })
+  const article = createArticle({ markdown: MD })
+  await store.update(state => { state.articles.push(article) })
+  await pipeline.banner(article.id)
+  const saved = (await store.read()).articles[0]
+  assert.equal(calls.length, 2)
+  assert.match(calls[1], /标题第一行/)
+  assert.deepEqual(saved.banners.poster.warnings, [])
+  assert.equal(saved.banners.poster.spec.poster.title1, '排版这件事')
+})
+
+const reply = (status, body) => async () => ({ ok: status >= 200 && status < 300, status, text: async () => (typeof body === 'string' ? body : JSON.stringify(body)) })
+
+test('朱雀 API：请求格式、结果整理和各种报错', async () => {
+  let sent
+  const fetchImpl = async (url, init) => {
+    sent = { url, init }
+    return reply(200, { status: 'success', labels_ratio: { 0: 0.6, 1: 0.1, 2: 0.3 }, makers_models_usage: { total_tokens: 321 },
+      segment_labels: [{ text: '第二', label: 2, conf: 0.7, order: 2 }, { text: '第一', label: 0, conf: 0.9, order: 1 }, { nope: true }] })()
+  }
+  const result = await detect('正文', { key: 'k-123', fetchImpl })
+  assert.equal(sent.url, DEFAULT_ENDPOINT)
+  assert.equal(sent.init.headers.authorization, 'Bearer k-123')
+  assert.deepEqual(JSON.parse(sent.init.body), { text: '正文', is_merge: false })
+  assert.deepEqual(result.overall, { human: 60, ai: 10, suspect: 30 })
+  assert.deepEqual(result.segments.map(seg => seg.text), ['第一', '第二'])
+  assert.equal(result.tokens, 321)
+
+  await assert.rejects(detect('正文', { key: '' }), /还没有设置/)
+  await assert.rejects(detect('  ', { key: 'k' }), /没有可以检测/)
+  await assert.rejects(detect('正文', { key: 'k', endpoint: 'http://example.com/x' }), /https/)
+  await assert.rejects(detect('正文', { key: 'k', fetchImpl: reply(401, { error: { message: 'bad key' } }) }), /无效或没有权限/)
+  await assert.rejects(detect('正文', { key: 'k', fetchImpl: reply(429, { msg: 'quota' }) }), /限流或额度.*quota/)
+  await assert.rejects(detect('正文', { key: 'k', fetchImpl: reply(500, 'oops') }), /500.*oops/)
+  await assert.rejects(detect('正文', { key: 'k', fetchImpl: reply(200, { status: 'failed', msg: '内容不过审' }) }), /内容不过审/)
+  await assert.rejects(detect('正文', { key: 'k', fetchImpl: async () => { throw new Error('ECONNRESET') } }), /连不上/)
+})
+
+test('朱雀片段按文字对回段落：切分不对齐也能对上，对不上的不下结论', () => {
+  const article = createArticle({ markdown: MD })
+  const [first, , , second] = article.blocks.map(b => b.text)
+  const { segments, covered } = mapSegments(article, [
+    { text: `标题在这里\n${first.slice(0, 20)}`, label: 0, conf: 0.8 },
+    { text: `${first.slice(20)} 小节`, label: 2, conf: 0.66 },
+    { text: '完全无关的一段话，文章里没有。', label: 1, conf: 0.99 },
+  ])
+  assert.deepEqual(segments, [{ block: 1, level: 'suspect', score: 0.66 }])
+  assert.deepEqual([...covered], [0])
+  const result = markBlocks(article, { segments, covered }, 'api')
+  assert.deepEqual([result.flagged, result.passed, result.unmatched], [1, 0, 1])
+  assert.equal(article.blocks[0].check.source, 'api')
+  assert.equal(article.blocks[3].check, null, `没对上的段不标通过：${second.slice(0, 6)}`)
+})
+
+test('设置：密钥不回传明文，接口地址只收 https', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ws-settings-'))
+  assert.equal(publicSettings(await readSettings(root)).zhuqueKeySet, false)
+  const saved = publicSettings(await updateSettings(root, { zhuqueKey: '  sk-abcdef1234  ', fixedLines: ['一句', ' ', 3], nope: 1 }))
+  assert.deepEqual([saved.zhuqueKeySet, saved.zhuqueKeyTail, saved.fixedLines], [true, '1234', ['一句']])
+  assert.ok(!JSON.stringify(saved).includes('abcdef'))
+  assert.equal((await readSettings(root)).zhuqueKey, 'sk-abcdef1234')
+  await assert.rejects(updateSettings(root, { zhuqueEndpoint: 'http://evil.example/x' }), /https/)
+  assert.equal((await updateSettings(root, { zhuqueEndpoint: '' })).zhuqueEndpoint, DEFAULT_ENDPOINT)
+  assert.equal(publicSettings(await updateSettings(root, { zhuqueKey: '' })).zhuqueKeySet, false)
+})
+
+test('流水线：API 检测把结果写回段落，并报出用量', async () => {
+  const store = new Store(mkdtempSync(join(tmpdir(), 'ws-detect-')))
+  const article = createArticle({ markdown: MD })
+  await store.update(state => { state.articles.push(article) })
+  let body
+  const fetchImpl = async (url, init) => {
+    body = JSON.parse(init.body)
+    const lines = body.text.split('\n').filter(Boolean)
+    return reply(200, { status: 'success', makers_models_usage: { total_tokens: 88 }, segment_labels: lines.map((text, i) => ({ text, order: i, label: text.startsWith('第一段') ? 1 : 0, conf: 0.97 })) })()
+  }
+  const pipeline = new Pipeline({ ctx: { get: () => null }, store, fetchImpl })
+  await pipeline.detect(article.id, { key: 'k', fixedLines: [] })
+  const saved = (await store.read()).articles[0]
+  assert.ok(!saved.notice?.error, saved.notice?.text)
+  assert.ok(!body.text.includes('#') && !body.text.includes('slug'))
+  assert.deepEqual(saved.blocks.map(b => b.check?.status ?? null), ['flag', null, null, 'pass', null])
+  assert.equal(saved.blocks[0].check.level, 'ai')
+  assert.match(saved.notice.text, /1 段要处理.*88 token/)
+})
+
+test('模型：跟随 DSH 默认，指定后用指定的，读不到的提供方跳过', async () => {
+  const llm = {
+    listProviders: () => [{ id: 'a', name: 'A' }, { id: 'b' }, { id: 'c', name: 'C' }],
+    listModels: async id => { if (id === 'c') throw new Error('down'); return id === 'a' ? [{ id: 'a1', name: 'A one' }] : [{ id: 'b1' }] },
+  }
+  const ctx = { get: name => ({ llm, agentDefaultModel: { currentSelection: () => ({ provider: 'a', model: 'a1' }) } })[name] }
+  assert.deepEqual(await listModels(ctx), [{ provider: 'a', name: 'A', models: [{ id: 'a1', name: 'A one' }] }, { provider: 'b', name: 'b', models: [{ id: 'b1', name: 'b1' }] }])
+  setModelOverride(null)
+  assert.deepEqual(modelInfo(ctx), { provider: 'a', model: 'a1' })
+  setModelOverride({ provider: 'b', model: 'b1' })
+  assert.deepEqual(modelInfo(ctx), { provider: 'b', model: 'b1' })
+  setModelOverride({ provider: '', model: '' })
+  assert.deepEqual(modelInfo(ctx), { provider: 'a', model: 'a1' })
+  const root = mkdtempSync(join(tmpdir(), 'ws-model-'))
+  await assert.rejects(updateSettings(root, { model: { provider: 'a', model: '' } }), /一起填/)
+  assert.deepEqual((await updateSettings(root, { model: { provider: 'b', model: 'b1' } })).model, { provider: 'b', model: 'b1' })
+  assert.deepEqual((await readSettings(root)).model, { provider: 'b', model: 'b1' })
+})
+
+const LONG = n => `第${n}段的正文内容写得足够长，这样才会参加朱雀检测和一键处理的流程。`
+function flaggedArticle() {
+  // 1-3 相邻标红，4 是标题，5-6 标红，7 通过，8 改过两轮，9 该退回，10 噪声带
+  const md = [1, 2, 3].map(LONG).concat('## 小节', LONG(5), LONG(6), LONG(7), LONG(8), LONG(9), LONG(10)).join('\n\n')
+  const article = createArticle({ markdown: md })
+  const flag = (i, extra) => { article.blocks[i].check = { status: 'flag', score: 0.9, level: 'suspect', source: 'pdf', fixes: 0, ...extra } }
+  flag(0, { level: 'ai', score: 0.99 }); flag(1); flag(2); flag(4); flag(5, { score: 0.95 })
+  article.blocks[6].check = { status: 'pass' }
+  flag(7, { fixes: 2 }); flag(8, { worse: true }); flag(9, { score: 0.55 })
+  return article
+}
+
+test('一键处理：按 skill 跳过三种段，相邻的成组，AI 特征的组先改', () => {
+  const article = flaggedArticle()
+  const { picked, skipped } = fixPlan(article)
+  assert.deepEqual(picked, [0, 1, 2, 4, 5])
+  assert.deepEqual(skipped, { twice: 1, worse: 1, noise: 1 })
+  assert.deepEqual(fixGroups(article, picked), [[0, 1, 2], [4, 5]])
+  assert.deepEqual(fixGroups(article, picked, { maxBlocks: 2 }), [[0, 1], [4, 5], [2]], '拆开后仍按轻重排')
+  article.blocks[9].check.source = 'api'
+  assert.deepEqual(fixPlan(article).picked, [0, 1, 2, 4, 5, 9], 'API 结果没有噪声带这一说')
+})
+
+function batchPipeline(store, answer, { gate } = {}) {
+  const calls = []
+  const llm = { prepareCall: async () => ({ config: {}, async *stream({ messages }) {
+    const text = messages[0].content[0].text
+    calls.push(text)
+    if (gate) await gate()
+    yield { type: 'text-delta', text: answer(text) }
+    yield { type: 'finish', reason: { kind: 'stop' } }
+  } }) }
+  const services = { llm, agentDefaultModel: { currentSelection: () => ({ provider: 'p', model: 'm' }) } }
+  return { calls, pipeline: new Pipeline({ ctx: { get: name => services[name] }, store }) }
+}
+
+const rewriteAll = text => {
+  const part = text.split('# 要一起改写的段').pop()
+  const numbers = [...part.matchAll(/【(\d+)】/g)].map(m => Number(m[1]))
+  return JSON.stringify({ paragraphs: numbers.map(n => ({ block: n, text: n === 2 ? `第2段改写了，[可补：当时的具体时间]` : `第${n}段改写了，写得不一样的长度和节奏。` })).concat({ block: 7, text: '不该动的段' }) })
+}
+
+test('一键处理流水线：只改点名的段，整批一次撤销，列出 [可补]', async () => {
+  const store = new Store(mkdtempSync(join(tmpdir(), 'ws-fixall-')))
+  const article = flaggedArticle()
+  const before = article.blocks.map(b => b.text)
+  await store.update(state => { state.articles.push(article) })
+  const { calls, pipeline } = batchPipeline(store, rewriteAll)
+  await pipeline.fixAll(article.id)
+  let saved = (await store.read()).articles[0]
+  assert.equal(calls.length, 2)
+  assert.match(calls[0], /【1】（AIGC 值 0.99）/, 'AI 特征那组先改')
+  assert.deepEqual(saved.blocks.map(b => b.check?.status ?? null), ['fixed', 'fixed', 'fixed', null, 'fixed', 'fixed', 'pass', 'flag', 'flag', 'flag'])
+  assert.equal(saved.blocks[6].text, before[6], '没点名的段不动')
+  assert.equal(saved.blocks[0].prev, before[0])
+  assert.equal(saved.blocks[0].check.fixes, 1)
+  assert.match(saved.notice.text, /改写了 5 段.*跳过：1 段改过两轮.*第 2 段留了 \[可补\]/)
+  undo(saved)
+  assert.deepEqual(saved.blocks.map(b => b.text), before, '撤销一次全部退回')
+  assert.equal(pipeline.job(article.id), null)
+})
+
+test('一键处理流水线：中途停止只改完已经开始的组，某组失败不影响其他组', async () => {
+  const store = new Store(mkdtempSync(join(tmpdir(), 'ws-fixstop-')))
+  const md = Array.from({ length: 12 }, (_, i) => LONG(i + 1)).join('\n\n## 断开\n\n')
+  const article = createArticle({ markdown: md })
+  article.blocks.forEach(b => { if (isCheckable(b.text)) b.check = { status: 'flag', score: 0.9, level: 'suspect', source: 'api', fixes: 0 } })
+  await store.update(state => { state.articles.push(article) })
+  const gate = () => new Promise(resolve => setTimeout(resolve, 20))
+  const { calls, pipeline } = batchPipeline(store, text => (text.split('# 要一起改写的段').pop().includes('【3】') ? 'not json' : rewriteAll(text)), { gate })
+  const run = pipeline.fixAll(article.id)
+  while (calls.length < 3) await new Promise(resolve => setTimeout(resolve, 1))
+  assert.equal(pipeline.job(article.id).progress.total, 12)
+  assert.equal(pipeline.job(article.id).targets.length, 3, '三组同时在改')
+  assert.ok(pipeline.stop(article.id))
+  await run
+  const saved = (await store.read()).articles[0]
+  assert.equal(calls.length, 3, '停止后不再开新的组')
+  assert.match(saved.notice.text, /已停止：处理了 3 段，改写 2 段，还有 9 段没动.*1 段这次没改成/)
+})

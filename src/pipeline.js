@@ -14,8 +14,8 @@ const DRAFT_RULES = `# 本次输出要求
 - 需要截图的地方写 \`[截图：内容]\` 占位。`
 
 const TITLE_RULES = `# 本次输出要求
-给下面这篇文章出 5 个标题候选和一条摘要。只输出 JSON，不要解释：
-{"titles":["标题一","标题二","标题三","标题四","标题五"],"summary":"摘要"}`
+为文章写 5 个候选标题和一条摘要。选出最准确、具体且有吸引力的一条放在第一位，给出一句具体的主推理由（40 字以内）。只输出 JSON：
+{"titles":["标题一","标题二","标题三","标题四","标题五"],"summary":"摘要","recommendationReason":"主推第一条的理由"}`
 
 const CHAT_RULES = `# 你现在的工作：按作者的一句话改稿
 作者会给你一篇分好段、带段号的文章，和一句修改意见。你只输出 JSON，不要解释：
@@ -132,7 +132,11 @@ export class Pipeline {
       const target = state.articles.find(a => a.id === articleId)
       if (!target) return
       snapshot(target, '出标题')
-      target.titles = list.map(text => ({ text }))
+      const reason = typeof parsed.recommendationReason === 'string' ? parsed.recommendationReason.trim().slice(0, 80) : ''
+      target.titles = [...new Set(list)].map((text, index) => ({
+        text,
+        ...(index === 0 && reason ? { recommended: true, reason } : {}),
+      }))
       if (typeof parsed.summary === 'string') target.summary = parsed.summary.trim().slice(0, 300)
       if (!target.title) target.title = list[0]
       touch(target)

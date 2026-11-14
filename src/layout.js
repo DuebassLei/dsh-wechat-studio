@@ -38,13 +38,16 @@ async function python(args, options) {
 /**
  * 把 Markdown 排成公众号版式页面。
  * @param {string} markdown - 文章 Markdown。
- * @param {{style?: string, theme?: string, banner?: object}} [options] - 默认风格和配色（不合法的值忽略），横幅规格（没有就不画横幅）。
+ * @param {{style?: string, theme?: string, banner?: object, followCard?: boolean, brand?: {author?: string, slogan?: string}}} [options] - 默认风格和配色（不合法的值忽略），横幅规格（没有就不画横幅）。
  * @returns {Promise<{html: string, report: string}>} 页面和脚本打印的自查报告。
  */
-export async function renderLayout(markdown, { style, theme, banner } = {}) {
+export async function renderLayout(markdown, { style, theme, banner, followCard = false, brand } = {}) {
   const dir = await mkdtemp(join(tmpdir(), 'wechat-studio-'))
   await writeFile(join(dir, 'article.md'), markdown)
   const args = [join(VENDOR, 'layout.py'), 'article.md', '--out', 'out']
+  args.push('--outro', followCard ? 'true' : 'false')
+  if (brand?.author) args.push('--brand-author=' + brand.author)
+  if (brand?.slogan) args.push('--brand-slogan=' + brand.slogan)
   if (banner) {
     await writeFile(join(dir, 'banner.json'), JSON.stringify(banner))
     args.push('--banner', 'banner.json')

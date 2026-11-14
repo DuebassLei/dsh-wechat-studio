@@ -18,7 +18,7 @@ const client = {
   jsxFactory: 'React.createElement',
   jsxFragment: 'React.Fragment',
   external: ['react'],
-  loader: { '.css': 'text' },
+  loader: { '.css': 'text', '.webp': 'dataurl' },
   minify: !watch,
   legalComments: 'none',
   banner: { js: `window.__ModuleLoader__.load({id:${JSON.stringify(pkg.name)},factory:(require)=>{const module={exports:{}};const exports=module.exports;` },

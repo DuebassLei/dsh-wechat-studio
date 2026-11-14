@@ -94,3 +94,7 @@ npm pack          # 打出可安装的 tgz
 - [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的开放插件系统。
 
 MIT · 社区插件，与 DeepSeek 无关。
+
+飞书 Markdown 图片：在插件「设置 → Cloudinary 图床」填写 Cloud Name、API Key、API Secret（可从 [Cloudinary 控制台](https://console.cloudinary.com/settings/api-keys) 获取）。把飞书 Markdown 贴进来后，点击「放上稿面」，插件会转存其中的飞书授权下载图片，并把地址替换为 Cloudinary 的 HTTPS 地址。上传后的图片可通过地址直接访问。正文先打开，图片在后台转存。失败的图片保留原链接，可在稿面重试。如果飞书链接已过期，请重新复制 Markdown。
+
+封面提示词由 [项目内的林月半子封面技能](skills/linyuebanzi-cover-banner/SKILL.md) 驱动。修改该目录下的技能说明、对应风格的 `references/prompt_template*.md` 或 `references/blocklist.txt`，下次生成时会重新读取。模板的第一个代码块是发给生图模型的正文，`{{…}}` 由文本模型按规则填写。

@@ -1,8 +1,14 @@
+import { randomUUID } from 'node:crypto'
+import { COVER_RESOLUTIONS, COVER_FORMATS, MAX_COVER_COUNT } from './cover-options.js'
 // dsh-wechat-studio host 半片：/wechat-studio/* 接口。
 import { join } from 'node:path'
 import { defaultSelection, listModels, modelInfo, modelOverride, modelStatus, setModelOverride, skillSources } from './ai.js'
 import { BANNER_CHOICES, BANNER_STYLES, DEFAULT_BANNER } from './banner.js'
 import { blockKind, createArticle, fixPlan, isCheckable, listMeta, snapshot, toMarkdown, touch, undo } from './article.js'
+import { transferFeishuImages } from './cloudinary.js'
+import { feishuImageUrls, replaceFeishuImages } from './markdown-images.js'
+import { coverPrompt, generateArkCover, readCover, saveCover } from './cover.js'
+import { COVER_STYLES } from './cover-styles.js'
 import { detectionText, renderLayout } from './layout.js'
 import { Pipeline } from './pipeline.js'
 import { pdfToText } from './report.js'
@@ -46,15 +52,128 @@ function bannerView(article) {
   return { style, choices: BANNER_CHOICES.map(id => ({ id, name: BANNER_STYLES[id]?.name ?? '不要横幅' })), ready: style === 'none' || Boolean(saved), warnings: saved?.warnings ?? [], at: saved?.at ?? null }
 }
 
-function view(article, pipeline) {
+const imageJobs = new WeakMap()
+const coverJobs = new WeakMap()
+
+function coverJobMap(store) {
+  if (!coverJobs.has(store)) coverJobs.set(store, new Map())
+  return coverJobs.get(store)
+}
+
+function coverRuns(article) {
+  if (article.coverRuns) return article.coverRuns
+  return [...(article.coverHistory ?? []), article.cover].filter(Boolean).map(cover => ({
+    ...cover, count: 1, format: 'png', images: [{ id: cover.id }], status: 'succeeded',
+  }))
+}
+
+function startCover(deps, article, apiKey, options) {
+  const { store, ctx, fetchImpl } = deps
+  const jobs = coverJobMap(store)
+  if (jobs.has(article.id)) return
+  const title = article.title
+  const markdown = toMarkdown(article)
+  const { count, style } = options
+  const record = {
+    id: randomUUID(), title, ...options, createdAt: new Date().toISOString(),
+    images: [], errors: [], status: 'running',
+  }
+  const job = { id: record.id, stage: 'prompt', count, index: 1 }
+  jobs.set(article.id, job)
+  const run = async () => {
+    await store.update(() => {
+      article.coverRuns ??= coverRuns(article)
+      article.coverRuns.push(record)
+      article.coverError = null
+    })
+    try {
+      const prompt = await coverPrompt(ctx, title, markdown, style)
+      await store.update(() => { record.prompt = prompt })
+      for (let index = 1; index <= count; index++) {
+        Object.assign(job, { stage: 'generating', index })
+        let id
+        try {
+          const image = await generateArkCover(prompt, { ...options, apiKey }, fetchImpl)
+          job.stage = 'saving'
+          id = await saveCover(store.root, image, options.format)
+        } catch (err) {
+          const message = err.name === 'TimeoutError' ? '封面生成超时，请重试。' : err.message
+          await store.update(() => { record.errors.push(`第 ${index} 张：${message}`) })
+          continue
+        }
+        await store.update(() => { record.images.push({ id }) })
+      }
+    } catch (err) {
+      await store.update(() => { record.errors.push(err.message) })
+    }
+    await store.update(() => {
+      record.status = !record.images.length ? 'failed' : record.errors.length ? 'partial' : 'succeeded'
+      if (record.images.length) {
+        article.cover = { ...options, id: record.images[0].id, title, prompt: record.prompt, createdAt: record.createdAt }
+      }
+      article.coverError = record.errors[0] ?? null
+    })
+  }
+  void run().catch(() => { article.coverError = '保存封面状态失败，请重试。' }).finally(() => jobs.delete(article.id))
+}
+
+function imageJobMap(store) {
+  if (!imageJobs.has(store)) imageJobs.set(store, new Map())
+  return imageJobs.get(store)
+}
+
+function startImageImport(deps, article, urls) {
+  if (!urls.length) return
+  const { store, fetchImpl } = deps
+  const jobs = imageJobMap(store)
+  if (jobs.has(article.id)) return
+  const progress = { total: urls.length, done: 0 }
+  jobs.set(article.id, progress)
+  const replacements = new Map()
+  const run = async () => {
+    const settings = await readSettings(store.root)
+    let error
+    try {
+      error = await transferFeishuImages(urls, settings.cloudinary, (url, result) => {
+        progress.done++
+        if (result) replacements.set(url, result)
+      }, fetchImpl)
+    } catch (err) {
+      error = err.message
+    }
+    await store.update(state => {
+      const current = state.articles.find(item => item.id === article.id)
+      if (!current) return
+      // Apply URLs to the latest text so edits made during upload are preserved.
+      for (const blocks of [current.blocks, ...current.history.map(entry => entry.blocks)]) {
+        for (const block of blocks) {
+          block.text = replaceFeishuImages(block.text, replacements)
+          if (block.prev) block.prev = replaceFeishuImages(block.prev, replacements)
+        }
+      }
+      const remaining = feishuImageUrls(current.blocks).length
+      current.imageImport = remaining ? { error: error ?? '还有飞书图片待转存。', remaining } : null
+    })
+  }
+  void run().catch(() => {
+    article.imageImport = { error: '图片转存结果保存失败，请重试。' }
+  }).finally(() => jobs.delete(article.id))
+}
+
+function view(article, pipeline, store) {
   if (!article) return null
   return {
     id: article.id, topic: article.topic, title: article.title, titles: article.titles, summary: article.summary,
     blocks: article.blocks.map(block => ({ id: block.id, text: block.text, kind: blockKind(block.text), checkable: isCheckable(block.text), check: block.check, hasPrev: Boolean(block.prev) })),
     banner: bannerView(article),
+    followCard: article.followCard === true,
     fixPlan: (({ picked, skipped }) => ({ count: picked.length, skipped }))(fixPlan(article)),
     chat: article.chat.slice(-40), canUndo: article.history.length > 0, zhuque: article.zhuque, notice: article.notice ?? null,
     job: pipeline.job(article.id),
+    coverRuns: coverRuns(article).map(run => run.status === 'running' && coverJobMap(store).get(article.id)?.id !== run.id
+      ? { ...run, status: 'interrupted' } : run),
+    cover: article.cover ?? null, coverJob: coverJobMap(store).get(article.id) ?? null, coverError: article.coverError ?? null,
+    imageImport: imageJobMap(store).get(article.id) ?? article.imageImport ?? null,
   }
 }
 
@@ -64,9 +183,10 @@ async function snapshotState(ctx, store, pipeline) {
   const info = modelInfo(ctx)
   const settings = await readSettings(store.root)
   return {
+    brand: settings.brand,
     zhuqueReady: Boolean(settings.zhuqueKey),
     articles: state.articles.map(listMeta).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
-    current: view(current, pipeline),
+    current: view(current, pipeline, store),
     model: info ? info.model : null, modelPinned: Boolean(modelOverride()), modelOk: modelStatus.ok, modelError: modelStatus.error,
   }
 }
@@ -108,6 +228,22 @@ export async function route(deps, req, res) {
       return json(res, 200, { dir, skills: await skillSources(dir) })
     }
     const article = mustFind(await store.read(), url.searchParams.get('id'))
+    if (path === 'cover/image') {
+      const id = url.searchParams.get('asset')
+      const run = coverRuns(article).find(run => run.images.some(image => image.id === id))
+      if (!run) return json(res, 404, { error: '未找到封面' })
+      const format = run.format ?? 'png'
+      let image
+      try {
+        image = await readCover(store.root, id, format)
+      } catch {
+        return json(res, 404, { error: '封面文件不存在' })
+      }
+      res.setHeader('content-type', `image/${format}`)
+      res.setHeader('cache-control', 'private, no-store')
+      if (url.searchParams.has('download')) res.setHeader('content-disposition', `attachment; filename="cover.${format}"`)
+      return res.end(image)
+    }
     if (path === 'markdown') return json(res, 200, { markdown: toMarkdown(article) })
     if (path === 'detection-text') {
       const settings = await readSettings(store.root)
@@ -117,7 +253,7 @@ export async function route(deps, req, res) {
       const settings = await readSettings(store.root)
       const style = article.bannerStyle ?? DEFAULT_BANNER
       const banner = style === 'none' ? null : article.banners?.[style]?.spec ?? null
-      const { html, report } = await renderLayout(toMarkdown(article), { ...settings, banner })
+      const { html, report } = await renderLayout(toMarkdown(article), { ...settings, banner, followCard: article.followCard === true })
       return json(res, 200, { html, report })
     }
     return json(res, 404, { error: '没有这个接口' })
@@ -138,12 +274,37 @@ export async function route(deps, req, res) {
       const hasBody = typeof body.markdown === 'string' && body.markdown.trim()
       if (!hasBody && !String(body.topic ?? '').trim() && !String(body.material ?? '').trim()) throw Object.assign(new Error('写一句选题，或者贴入已有的文章。'), { status: 400 })
       const article = createArticle(body)
+      const urls = hasBody ? feishuImageUrls(article.blocks) : []
+      if (urls.length) article.imageImport = { error: '图片转存中断，可以重试。', remaining: urls.length }
       await store.update(state => {
         state.articles.push(article)
         state.currentId = article.id
       })
+      startImageImport(deps, article, urls)
       if (!hasBody) pipeline.draft(article.id)
       else if (!article.titles.length && body.titles !== false) pipeline.titles(article.id)
+      return ok()
+    }
+    case 'cover/generate': {
+      const style = COVER_STYLES.find(item => item.id === body.style)?.id
+      if (!style) return json(res, 400, { error: '请先选择封面风格。' })
+      const article = mustFind(await store.read(), body.id)
+      if (!article.title?.trim() || !article.blocks.length) return json(res, 400, { error: '请先选定标题并填写正文。' })
+      const { resolution = '2K', count = 1, format = 'png' } = body
+      if (!COVER_RESOLUTIONS.includes(resolution) || !COVER_FORMATS.includes(format) ||
+          !Number.isInteger(count) || count < 1 || count > MAX_COVER_COUNT) {
+        return json(res, 400, { error: '请选择有效的分辨率、格式和生成张数（1 至 4）。' })
+      }
+      const { arkKey, arkModel } = await readSettings(store.root)
+      if (!arkKey) return json(res, 400, { error: '请先在设置中填写火山方舟 API Key。' })
+      startCover(deps, article, arkKey, { style, resolution, count, format, model: arkModel })
+      return ok()
+    }
+    case 'images/retry': {
+      const article = mustFind(await store.read(), body.id)
+      const urls = feishuImageUrls(article.blocks)
+      if (urls.length) startImageImport(deps, article, urls)
+      else await store.update(() => { article.imageImport = null })
       return ok()
     }
     case 'articles/select':
@@ -151,6 +312,7 @@ export async function route(deps, req, res) {
       return ok()
     case 'articles/delete': {
       notBusy(pipeline, body.id)
+      if (coverJobMap(store).has(body.id)) return json(res, 409, { error: '封面生成完成后再删除这篇文章。' })
       await store.update(state => {
         const article = mustFind(state, body.id)
         state.articles = state.articles.filter(a => a.id !== article.id)
@@ -203,6 +365,11 @@ export async function route(deps, req, res) {
         touch(article)
       })
       return ok()
+    case 'layout/follow-card': {
+      if (typeof body.enabled !== 'boolean') return json(res, 400, { error: '请指定是否显示文末关注卡。' })
+      await store.update(state => { mustFind(state, body.id).followCard = body.enabled })
+      return ok()
+    }
     case 'banner/style': {
       if (!BANNER_CHOICES.includes(body.style)) throw Object.assign(new Error('没有这种横幅风格'), { status: 400 })
       const article = await store.update(state => {

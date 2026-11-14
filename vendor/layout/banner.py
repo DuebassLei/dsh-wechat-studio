@@ -39,13 +39,36 @@ def tw(s, size):   # 估算文字宽度
     return sum(size if ord(c) > 255 else size * 0.58 for c in s)
 
 # ---------------- fixed part: avatar + slogan ----------------
-def head():
+def head(brand=None):
     o = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {HH}" width="100%" style="display:block;width:100%;height:auto;max-width:{W}px;margin:0 auto;background:transparent;font-family:\'PingFang SC\',sans-serif">',
          '<image x="4" y="18" width="216" height="190" preserveAspectRatio="xMidYMax meet" href="GIF_URL_HERE"/>']
-    random.seed(3); ps, tx, ty, dot = 3.0, 236, 86, 2.5; x = tx
-    for i, (ch, w, hexrows) in enumerate(SLOGAN):
+    original = "".join(ch for ch, _, _ in SLOGAN)
+    brand = brand or {}
+    author, slogan = brand.get("author", ""), brand.get("slogan", "")
+    if author in ("", "林月半子的AI笔记") and slogan in ("", original):
+        lines = [(original, 86, 3.0, SLOGAN_COLORS)]
+    else:
+        entries = [(text, size, color) for text, size, color in [(author, 2.4, BODY), (slogan, 2.8, OR)] if text]
+        lines = [(text, 86 if len(entries) == 1 else 59 + i * 55, size, [color] * len(text))
+                 for i, (text, size, color) in enumerate(entries)]
+    rng = random.Random(3)
+    for text, ty, size, colors in lines:
+        o.extend(animated_brand_line(text, ty, size, colors, rng))
+    return o
+
+
+def animated_brand_line(text, ty, size, colors, rng):
+    o = []
+    glyphs = {ch: (w, rows) for ch, w, rows in SLOGAN}
+    entries = [(ch, *glyphs.get(ch, (16 if ord(ch) > 255 else 8, None))) for ch in text]
+    if not entries:
+        return o
+    ps = min(size, (W - 270) / sum(w for _, w, _ in entries))
+    dot = ps * 5 / 6
+    x = 236
+    for i, (ch, w, hexrows) in enumerate(entries):
         n = w // 4; runs = []
-        for y in range(16):
+        for y in range(16 if hexrows else 0):
             v = int(hexrows[y*n:(y+1)*n], 16); bits = [(v >> (w-1-b)) & 1 for b in range(w)]; b = 0
             while b < w:
                 if bits[b]:
@@ -54,10 +77,20 @@ def head():
                     runs.append(f"M{R(x+b*ps)} {R(ty+y*ps+dot/2)}h{R((e-b)*ps)}"); b = e
                 else: b += 1
         cw = w * ps
-        if runs:
-            ta, td = 0.1 + i*0.045, 1.9 + i*0.025
-            dx, dy = random.uniform(-26, 26), random.uniform(-38, 38); mx, my = x + cw/2, ty + 24
-            p = f'<path d="{"".join(runs)}" fill="none" stroke="{SLOGAN_COLORS[i]}" stroke-width="{dot}" stroke-dasharray="{dot} {R(ps-dot)}"/>'
+        if runs or (hexrows is None and not ch.isspace()):
+            stagger = min(1, 22 / len(entries))
+            ta, td = 0.1 + i*0.045*stagger, 1.9 + i*0.025*stagger
+            dx, dy = rng.uniform(-26, 26), rng.uniform(-38, 38); mx, my = x + cw/2, ty + 8 * ps
+            p = f'<path d="{"".join(runs)}" fill="none" stroke="{colors[i]}" stroke-width="{dot}" stroke-dasharray="{dot} {R(ps-dot)}"/>'
+            if not hexrows:
+                # Fill the font outline with the same dot grid when no original bitmap exists.
+                pattern = f"brand-dot-{ty}-{i}"
+                side = R(ps)
+                radius = R(dot * .42)
+                p = (f'<defs><pattern id="{pattern}" patternUnits="userSpaceOnUse" width="{side}" height="{side}">'
+                     f'<circle cx="{radius}" cy="{radius}" r="{radius}" fill="{colors[i]}"/></pattern></defs>'
+                     f'<text x="{R(x)}" y="{R(ty + 14 * ps)}" font-size="{R(16 * ps)}" '
+                     f'textLength="{R(cw)}" lengthAdjust="spacingAndGlyphs" fill="url(#{pattern})">{esc(ch)}</text>')
             o.append(f'<g opacity="0">{A("opacity",[0,0,1,1,0,0],[0,ta,ta+0.12,td,td+0.35,D])}'
                      f'<g>{A(None,["0 0","0 0",f"{R(dx)} {R(dy)}",f"{R(dx)} {R(dy)}"],[0,td,td+0.4,D],EASE,"translate")}'
                      f'<g transform="translate({R(mx)} {R(my)})"><g>{A(None,[".6",".6","1.08",1,1,".25",".25"],[0,ta,ta+0.1,ta+0.18,td,td+0.4,D],EASE,"scale")}'
@@ -938,7 +971,7 @@ RIGHTS = {"steps": r_steps, "remix": r_remix, "pick": r_pick, "timeline": r_time
           "compare": r_compare, "storyboard": r_storyboard, "chat": r_chat, "stats": r_stats, "checklist": r_checklist, "terminal": r_terminal}
 
 def build_card(spec):
-    c = spec["card"]; th = THEMES.get(c.get("theme", "blue"), THEMES["blue"])
+    c = {**spec["card"], **spec.get("brand", {})}; th = THEMES.get(c.get("theme", "blue"), THEMES["blue"])
     M, LT, LN, BD, BG = th["main"], th["light"], th["line"], th["border"], th["bg"]
     o = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {CW} {CH}" width="100%" style="display:block;width:100%;height:auto;max-width:{CW}px;margin:0 auto;background:transparent;font-family:\'PingFang SC\',\'Helvetica Neue\',sans-serif">']
     o.append(f_pop(CW/2, CH/2, 0, f'<rect x="10" y="10" width="{CW-20}" height="{CH-20}" rx="34" fill="{BG}" stroke="{BD}" stroke-width="2"/>', 1.01))
@@ -954,8 +987,13 @@ def build_card(spec):
     o.append(f_rise(1.0, f'<text x="{L}" y="302" font-size="21" fill="{GRAY}">{esc(c.get("sub",""))}</text>', 10))
     if c.get("avatar", True):
         o.append(f_pop(L+36, 356, 1.2, f'<circle cx="{L+36}" cy="358" r="34" fill="{LT}"/><image x="{L-6}" y="314" width="84" height="80" preserveAspectRatio="xMidYMax meet" href="GIF_URL_HERE"/>'))
-        o.append(f_rise(1.35, f'<text x="{L+86}" y="352" font-size="18" font-weight="700" fill="#1F2937">{esc(c.get("author","林月半子的AI笔记"))}</text>'
-                              f'<text x="{L+86}" y="378" font-size="14" fill="#9CA3AF">{esc(c.get("slogan","我是林月半子，教你用AI干掉90%的重复劳动"))}</text>', 8))
+        author = c.get("author", "林月半子的AI笔记")
+        slogan = c.get("slogan", "我是林月半子，教你用AI干掉90%的重复劳动")
+        o.append(f_rise(1.35, _pt(L+86, 352, author, _fit(author, 18, 350), "#1F2937", 700)
+                        + _pt(L+86, 378, slogan, _fit(slogan, 14, 350), "#9CA3AF", 400), 8))
+    elif spec.get("brand"):
+        o.append(f_rise(1.35, _pt(L, 352, c.get("author", ""), _fit(c.get("author", ""), 18, 460), "#1F2937", 700)
+                        + _pt(L, 378, c.get("slogan", ""), _fit(c.get("slogan", ""), 14, 460), "#9CA3AF", 400), 8))
     else:
         o.append(f_rise(1.2, f'<text x="{L}" y="372" font-size="15" letter-spacing="1" fill="#9CA3AF">{esc(c.get("foot", c.get("eyebrow","")))}</text>', 8))
     o.append(f'<line x1="548" y1="72" x2="548" y2="72" stroke="{LT}" stroke-width="2">{F("y2",[72,72,372,372],[0,0.5,1.0,TT],["0 0 1 1",EASE,"0 0 1 1"])}</line>')
@@ -1005,8 +1043,19 @@ def build_poster(spec, neo=False):
         o.append(f'<rect x="64" y="330" width="0" height="12" rx="6" fill="{M}">{F("width", [0, 0, 110, 110], [0, 0.6, 1.0, TT], ["0 0 1 1", EASE, "0 0 1 1"])}</rect>')
         ay = 404
     if c.get("avatar", True):
-        o.append(f'<circle cx="96" cy="{ay}" r="34" fill="{LT}"' + f'/><image x="54" y="{ay-44}" width="84" height="80" preserveAspectRatio="xMidYMax meet" href="GIF_URL_HERE"/>'
-                 + _pt(146, ay + 12, c.get("author", "林月半子的AI笔记"), 33, K, 900 if neo else 800))
+        brand = spec.get("brand", {})
+        author = brand.get("author", c.get("author", "林月半子的AI笔记"))
+        slogan = brand.get("slogan")
+        o.append(f'<circle cx="96" cy="{ay}" r="34" fill="{LT}"/>'
+                 + f'<image x="54" y="{ay-44}" width="84" height="80" preserveAspectRatio="xMidYMax meet" href="GIF_URL_HERE"/>'
+                 + _pt(146, ay if slogan else ay + 12, author, _fit(author, 33, 570), K, 900 if neo else 800))
+        if slogan:
+            o.append(_pt(146, ay + 28, slogan, _fit(slogan, 18, 570), K, 400))
+    elif spec.get("brand"):
+        brand = spec["brand"]
+        author, slogan = brand.get("author", ""), brand.get("slogan", "")
+        if author: o.append(_pt(60, ay if slogan else ay + 12, author, _fit(author, 33, 640), K, 800))
+        if slogan: o.append(_pt(60, ay + 28, slogan, _fit(slogan, 18, 640), K, 400))
     # ---- 右栏 ----
     X, W = 770, 400; top = 60 if neo else 56; r = c.get("right") or ("tags" if neo and c.get("tags") else "flow")
     if r == "tags":
@@ -1048,7 +1097,7 @@ def build(spec):
         return build_poster(spec, spec["style"] == "neo")
     if spec.get("style") == "card":
         return build_card(spec)
-    o = head()
+    o = head(spec.get("brand"))
     sc = spec["scene"]
     o.append(f'<g opacity="0">{A("opacity",[0,0,1,1,0,0],[0,2.3,2.4,6.7,6.9,D])}')
     o += LAYOUTS[sc["layout"]](sc)

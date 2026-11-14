@@ -1,6 +1,16 @@
+import { plainOf, splitMarkdown } from '../src/article.js'
+import { countMarkdownImages, feishuImageUrls } from '../src/markdown-images.js'
+import magentaPreview from './assets/cover-styles/magenta.webp'
+import { COVER_MODELS, COVER_RESOLUTIONS, COVER_FORMATS, MAX_COVER_COUNT } from '../src/cover-options.js'
+import classicPreview from './assets/cover-styles/classic.webp'
+import editorialPreview from './assets/cover-styles/editorial.webp'
+import campaignPreview from './assets/cover-styles/campaign.webp'
+import kineticPreview from './assets/cover-styles/kinetic.webp'
+import grungePreview from './assets/cover-styles/grunge.webp'
+import { COVER_STYLES } from '../src/cover-styles.js'
 // 稿面：左边对话改稿，中间是稿子和纸边批注，右边是标题、朱雀质检和导出。
 import React from 'react'
-import { act, copyDetectionText, copyMarkdown, loadLayout, loadModels, loadSettings, loadSkills, saveSettings, setState, testZhuque, uploadReport, useStudio } from './state.js'
+import { act, copyDetectionText, copyMarkdown, copyText, loadLayout, loadModels, loadSettings, loadSkills, saveSettings, setState, testZhuque, uploadReport, useStudio } from './state.js'
 
 const ICONS = {
   check: 'M3 8.5l3.2 3.2L13 5',
@@ -124,7 +134,7 @@ function Annotation({ block, job }) {
   )
 }
 
-function Paper({ article }) {
+function Paper({ article, reviewTarget }) {
   const editing = useStudio(s => s.editing)
   const job = article.job
   if (job?.kind === 'draft') {
@@ -147,7 +157,7 @@ function Paper({ article }) {
         const flagged = block.check?.status === 'flag'
         const last = index === article.blocks.length - 1
         return (
-          <div className="ws-row" key={block.id}>
+          <div className={`ws-row ${reviewTarget === block.id ? 'is-review-target' : ''}`} id={`ws-review-${article.id}-${block.id}`} key={block.id}>
             <div className={`ws-sheet ${flagged ? 'is-flag' : ''} ${last ? 'is-last' : ''}`}>
               <span className="ws-no" aria-hidden="true">{index + 1}</span>
               {editing === block.id ? <Editor block={block} onDone={() => setState({ editing: null })} />
@@ -187,8 +197,27 @@ function BannerBar({ article }) {
 }
 
 function LayoutView({ article }) {
+  const pending = useStudio(s => s.pending)
   const layout = useStudio(s => s.layout)
   const tried = useStudio(s => s.bannerTried)
+  const frame = React.useRef(null)
+  const enhanced = layout?.html?.includes('window.setStudioOptions=')
+  const syncOptions = () => {
+    const banner = article.banner
+    try {
+      frame.current?.contentWindow?.setStudioOptions?.({
+        banner, busy: Boolean(article.job) || Boolean(pending),
+        status: article.job?.kind === 'banner' ? '正在生成横幅…'
+          : banner.style === 'none' ? ''
+          : banner.warnings.length ? `有 ${banner.warnings.length} 处字数提醒`
+          : banner.ready ? '已生成' : '待生成',
+        followCard: article.followCard, followPending: pending === 'layout/follow-card',
+      }, (path, body) => act(path, { ...body, id: article.id }))
+    } catch {
+      // The frame is replaced when a new preview arrives.
+    }
+  }
+  React.useEffect(syncOptions, [article, layout, pending])
   const banner = article.banner
   const tryKey = `${article.id}:${banner.style}`
   // 第一次打开排版、当前风格还没有横幅时，自动做一次；失败了不再自动重试
@@ -206,13 +235,27 @@ function LayoutView({ article }) {
     content = (
       <>
         <details className="ws-layout-report"><summary>自查报告</summary><pre>{layout.report}</pre></details>
-        <iframe className="ws-frame" title="公众号排版预览" srcDoc={layout.html} allow="clipboard-write" />
+        <iframe ref={frame} onLoad={syncOptions} className="ws-frame" title="公众号排版预览" srcDoc={layout.html} allow="clipboard-write" />
       </>
     )
   }
   return (
     <div className="ws-layout">
+      {!enhanced ? <>
       <BannerBar article={article} />
+      <div className="ws-bannerbar">
+        {typeof article.followCard === 'boolean' ? (
+          <label className="ws-follow-toggle">
+            <span>文末关注卡</span>
+            <input type="checkbox" role="switch" checked={article.followCard} disabled={pending === 'layout/follow-card'}
+              onChange={e => act('layout/follow-card', { id: article.id, enabled: e.target.checked })} />
+            <span className="ws-follow-track" aria-hidden="true" />
+          </label>
+        ) : (
+          <span className="ws-muted">文末关注卡 · 完全退出 DSH（⌘Q）并重新打开后可设置</span>
+        )}
+      </div>
+      </> : null}
       {content}
     </div>
   )
@@ -284,7 +327,210 @@ function ChatPane({ article }) {
   )
 }
 
-function SidePane({ article, flagged, ready }) {
+const coverStylePreviews = { classic: classicPreview, editorial: editorialPreview, campaign: campaignPreview, kinetic: kineticPreview, grunge: grungePreview, magenta: magentaPreview }
+
+function CoverOptionGroup({ label, name, options, value, onChange, disabled }) {
+  return (
+    <fieldset className="ws-cover-option" disabled={disabled}>
+      <legend>{label}</legend>
+      <div className="ws-cover-segments">
+        {options.map(option => (
+          <label key={option}>
+            <input type="radio" name={name} value={option} checked={value === option} onChange={() => onChange(option)} />
+            <span>{String(option).toUpperCase()}</span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  )
+}
+
+function CoverStyleDialog({ article }) {
+  const [style, setStyle] = React.useState(article.cover?.style ?? 'classic')
+  const [resolution, setResolution] = React.useState(article.cover?.resolution ?? '2K')
+  const [count, setCount] = React.useState(article.cover?.count ?? 1)
+  const [format, setFormat] = React.useState(article.cover?.format ?? 'png')
+  const [busy, setBusy] = React.useState(false)
+  const close = () => { if (!busy) setState({ dialog: null }) }
+  const submit = async event => {
+    event.preventDefault()
+    if (busy) return
+    setBusy(true)
+    const ok = await act('cover/generate', { id: article.id, style, resolution, count, format })
+    setBusy(false)
+    if (ok) setState({ dialog: null })
+  }
+  return (
+    <div className="ws-scrim" onMouseDown={event => { if (event.target === event.currentTarget) close() }}>
+      <form className="ws-dialog ws-cover-dialog" role="dialog" aria-modal="true" aria-label="选择封面风格" onSubmit={submit}>
+        <div className="ws-dialog-head">
+          <h2 className="ws-dialog-title">选择封面风格</h2>
+          <button type="button" className="ws-icon-btn" disabled={busy} aria-label="关闭" onClick={close}><Icon name="close" /></button>
+        </div>
+        <div className="ws-cover-dialog-body">
+          <fieldset className="ws-cover-gallery" disabled={busy}>
+            <legend>风格</legend>
+            <div className="ws-cover-style-grid">
+              {COVER_STYLES.map(item => (
+                <label className={`ws-choice ws-cover-style ${style === item.id ? 'is-on' : ''}`} key={item.id}>
+                  <input type="radio" aria-label={item.name} name="cover-style" value={item.id} checked={style === item.id} onChange={() => setStyle(item.id)} />
+                  <span className="ws-cover-style-body">
+                    <img src={coverStylePreviews[item.id]} alt="" />
+                    <strong>{item.name}</strong>
+                  </span>
+                </label>
+              ))}
+            </div>
+            <p className="ws-cover-style-description">{COVER_STYLES.find(item => item.id === style)?.description}</p>
+          </fieldset>
+          <div className="ws-cover-options">
+            <CoverOptionGroup label="选择分辨率" name="cover-resolution" options={COVER_RESOLUTIONS}
+              value={resolution} onChange={setResolution} disabled={busy} />
+            <CoverOptionGroup label="生成张数" name="cover-count" options={Array.from({ length: MAX_COVER_COUNT }, (_, i) => i + 1)}
+              value={count} onChange={setCount} disabled={busy} />
+            <CoverOptionGroup label="图片格式" name="cover-format" options={COVER_FORMATS}
+              value={format} onChange={setFormat} disabled={busy} />
+          </div>
+        </div>
+        <div className="ws-dialog-foot">
+          <button type="button" className="ws-btn" disabled={busy} onClick={close}>取消</button>
+          <button type="submit" className="ws-btn is-primary" disabled={busy}>{busy ? '正在提交…' : '生成封面'}</button>
+        </div>
+      </form>
+    </div>
+  )
+}
+
+const coverRunStatus = { running: '进行中', succeeded: '完成', partial: '部分完成', failed: '失败', interrupted: '已中断' }
+
+function CoverHistoryDialog({ article }) {
+  const runs = article.coverRuns ?? []
+  const historyAvailable = Array.isArray(article.coverRuns)
+  const [selectedId, setSelectedId] = React.useState(null)
+  const run = runs.find(item => item.id === selectedId) ?? runs.at(-1)
+  const styleName = item => COVER_STYLES.find(style => style.id === item.style)?.name ?? '封面'
+  const dateLabel = value => new Date(value).toLocaleString('zh-CN', {
+    month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
+  })
+  const close = () => setState({ dialog: null })
+  const imageUrl = id => `wechat-studio/cover/image?${new URLSearchParams({ id: article.id, asset: id })}`
+  return (
+    <div className="ws-scrim" onMouseDown={event => { if (event.target === event.currentTarget) close() }}
+      onKeyDown={event => { if (event.key === 'Escape') close() }}>
+      <section className="ws-dialog ws-cover-history" role="dialog" aria-modal="true" aria-label="封面生成记录">
+        <div className="ws-dialog-head">
+          <h2 className="ws-dialog-title">封面生成记录{historyAvailable ? `（${runs.length} 次）` : ''}</h2>
+          <button type="button" className="ws-icon-btn" aria-label="关闭" onClick={close}><Icon name="close" /></button>
+        </div>
+        {!run ? <p className="ws-history-empty ws-muted">{historyAvailable ? '还没有生成记录。' : '请完全退出 DSH（⌘Q）后重新打开，以加载封面记录。'}</p> : (
+          <div className="ws-history-body">
+            <nav className="ws-history-list" aria-label="生成批次">
+              {[...runs].reverse().map((item, index) => (
+                <button type="button" className={`ws-history-run ${run.id === item.id ? 'is-on' : ''}`}
+                  key={item.id} aria-pressed={run.id === item.id} onClick={() => setSelectedId(item.id)}>
+                  <strong>第 {runs.length - index} 次 · {styleName(item)}</strong>
+                  <small>{dateLabel(item.createdAt)} · {item.images.length}/{item.count} 张</small>
+                </button>
+              ))}
+            </nav>
+            <div className="ws-history-detail" key={run.id}>
+              <div className="ws-history-heading">
+                <h3>{styleName(run)}</h3>
+                <span className={`ws-history-status is-${run.status}`}>{coverRunStatus[run.status]}</span>
+              </div>
+              <p className="ws-history-meta">{[new Date(run.createdAt).toLocaleString('zh-CN'), run.model, run.resolution, run.format?.toUpperCase()].filter(Boolean).join(' · ')}</p>
+              <div className={`ws-history-images ${run.images.length > 1 ? 'is-grid' : ''}`}>
+                {run.images.map((image, index) => (
+                  <figure key={image.id}>
+                    <img src={imageUrl(image.id)} alt={`封面 ${index + 1}`} loading="lazy" />
+                    <figcaption><span>封面 {index + 1}</span>
+                      <a className="ws-link" href={imageUrl(image.id) + '&download=1'} download={`cover.${run.format ?? 'png'}`}>下载</a>
+                    </figcaption>
+                  </figure>
+                ))}
+              </div>
+              {run.prompt ? (
+                <section className="ws-history-prompt" aria-label="生成提示词">
+                  <div className="ws-history-heading">
+                    <h4>提示词</h4>
+                    <button type="button" className="ws-btn" onClick={() => copyText(run.prompt, '已复制提示词')}>复制提示词</button>
+                  </div>
+                  <pre tabIndex={0} aria-label="提示词正文">{run.prompt}</pre>
+                </section>
+              ) : null}
+              {run.errors?.map((error, i) => <p className="ws-warn" key={i}>{error}</p>)}
+            </div>
+          </div>
+        )}
+      </section>
+    </div>
+  )
+}
+
+function CoverPane({ article }) {
+  const pending = useStudio(s => s.pending)
+  const { cover, coverJob, coverError } = article
+  const imageUrl = id => `wechat-studio/cover/image?${new URLSearchParams({ id: article.id, asset: id })}`
+  const src = cover && imageUrl(cover.id)
+  const stage = { prompt: '正在分析文章…', generating: '正在生成封面…', saving: '正在裁切并保存…' }
+  return (
+    <section className="ws-sec">
+      <div className="ws-sec-head">
+        <h2 className="ws-pane-title">封面</h2>
+        <div className="ws-cover-actions">
+          <button type="button" className="ws-link" onClick={() => setState({ dialog: 'cover-history' })}>
+            生成记录{Array.isArray(article.coverRuns) ? `（${article.coverRuns.length} 次）` : ''}
+          </button>
+          <button type="button" className="ws-link" disabled={Boolean(coverJob) || pending === 'cover/generate' || !article.title || !article.blocks.length}
+            onClick={() => setState({ dialog: 'cover' })}>{cover ? '重新生成' : '生成封面'}</button>
+        </div>
+      </div>
+      <div className="ws-cover-preview">
+        {cover ? <img src={src} alt={cover.title} /> : <span>封面图 · 2.35:1</span>}
+      </div>
+      {coverJob ? <p className="ws-shimmer" role="status">{stage[coverJob.stage]}{coverJob.stage !== 'prompt' ? `（${coverJob.index}/${coverJob.count}）` : ''}</p> : null}
+      {!coverJob && coverError ? <p className="ws-warn" role="status">{coverError}</p> : null}
+      {cover ? <>
+        <a className="ws-link" href={src + '&download=1'} download={`cover.${cover.format ?? 'png'}`}>下载封面</a>
+        <details className="ws-manual"><summary>查看提示词</summary><p>{cover.prompt}</p></details>
+      </> : null}
+    </section>
+  )
+}
+
+function ReviewQueue({ article, target, onJump }) {
+  const rows = article.blocks.map((block, index) => ({ block, number: index + 1 }))
+    .filter(({ block }) => ['flag', 'fixed'].includes(block.check?.status))
+  if (!rows.length) return null
+  const current = rows.findIndex(({ block }) => block.id === target)
+  return (
+    <section className="ws-review-queue" aria-label="待处理段落">
+      <div className="ws-sec-head">
+        <h3>待处理段落 <span>{rows.length}</span></h3>
+        <div className="ws-review-nav">
+          <button type="button" className="ws-btn" disabled={current <= 0} onClick={() => onJump(rows[current - 1].block.id)}>上一处</button>
+          <button type="button" className="ws-btn" disabled={current >= rows.length - 1} onClick={() => onJump(rows[current + 1].block.id)}>下一处</button>
+        </div>
+      </div>
+      <div className="ws-review-list">
+        {rows.map(({ block, number }) => {
+          const check = block.check
+          const status = check.status === 'fixed' ? '待复测' : check.worse ? '建议退回' : check.level === 'ai' ? 'AI 特征' : '疑似 AI'
+          const excerpt = block.text.replace(/\s+/g, ' ').trim()
+          return (
+            <button type="button" key={block.id} className="ws-review-item" aria-current={target === block.id ? 'true' : undefined}
+              onClick={() => onJump(block.id)}>
+              <span className="ws-review-item-head"><strong>第 {number} 段</strong><span className={check.status === 'fixed' ? 'ws-muted' : 'ws-warn'}>{status}</span></span>
+              <span className="ws-review-excerpt">{excerpt}</span>
+            </button>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
+function SidePane({ article, flagged, ready, reviewTarget, onReviewJump }) {
   const fileRef = React.useRef(null)
   const [over, setOver] = React.useState(false)
   const busy = Boolean(article.job)
@@ -304,10 +550,17 @@ function SidePane({ article, flagged, ready }) {
         </div>
         {article.job?.kind === 'titles' ? <p className="ws-shimmer">正在出标题…</p> : null}
         {article.titles.map(item => (
-          <button type="button" key={item.text} className={`ws-choice ${item.text === article.title ? 'is-on' : ''}`} aria-pressed={item.text === article.title} onClick={() => act('title/pick', { text: item.text })}>{item.text}</button>
+          <button type="button" key={item.text} className={`ws-choice ws-title-choice ${item.recommended ? 'is-recommended' : ''} ${item.text === article.title ? 'is-on' : ''}`}
+            aria-pressed={item.text === article.title} onClick={() => act('title/pick', { text: item.text })}>
+            {item.recommended ? <span className="ws-title-recommendation"><Icon name="spark" size={13} />主推</span> : null}
+            <span>{item.text}</span>
+            {item.recommended && item.reason ? <small>{item.reason}</small> : null}
+          </button>
         ))}
         {article.summary ? <p className="ws-summary"><span>摘要</span>{article.summary}</p> : null}
       </section>
+
+      <CoverPane article={article} />
 
       <section className="ws-sec">
         <h2 className="ws-pane-title">朱雀质检{zhuque.round ? <span className="ws-round">第 {zhuque.round} 轮</span> : null}</h2>
@@ -320,6 +573,7 @@ function SidePane({ article, flagged, ready }) {
         )}
         {overall?.length ? <p className="ws-overall">{overall.map(([name, value]) => <span key={name}>{name} {value}%</span>)}</p> : null}
         <FixAll article={article} />
+        <ReviewQueue article={article} target={reviewTarget} onJump={onReviewJump} />
         <details className="ws-manual" open={!ready}>
           <summary>手动上传报告</summary>
           <ol className="ws-steps">
@@ -388,9 +642,65 @@ export function NewDialog() {
   const [material, setMaterial] = React.useState('')
   const [markdown, setMarkdown] = React.useState('')
   const [busy, setBusy] = React.useState(false)
-  const close = () => setState({ dialog: null })
+  const [reading, setReading] = React.useState(false)
+  const [dragging, setDragging] = React.useState(false)
+  const [fileName, setFileName] = React.useState('')
+  const [fileError, setFileError] = React.useState('')
+  const fileInput = React.useRef(null)
+  const locked = busy || reading
+  const readFiles = async files => {
+    if (locked || !files.length) return
+    if (files.length !== 1 || !/\.(md|markdown)$/i.test(files[0].name)) {
+      setFileError('请选择一个 .md 或 .markdown 文件。')
+      return
+    }
+    const file = files[0]
+    if (file.size >= 2_000_000) {
+      setFileError('文件过大，请拆成较小的 Markdown 文件后再导入。')
+      return
+    }
+    setFileError('')
+    setReading(true)
+    try {
+      const text = await file.text()
+      if (!text.trim()) {
+        setFileError('这个 Markdown 文件没有内容。')
+        return
+      }
+      setMarkdown(text)
+      setFileName(file.name)
+    } catch {
+      setFileError('读取文件失败，请重新选择。')
+    } finally {
+      setReading(false)
+    }
+  }
+  const dragOver = event => {
+    if (!event.dataTransfer.types.includes('Files')) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = locked ? 'none' : 'copy'
+    if (!locked) setDragging(true)
+  }
+  const drop = event => {
+    if (!event.dataTransfer.types.includes('Files')) return
+    event.preventDefault()
+    setDragging(false)
+    void readFiles(event.dataTransfer.files)
+  }
+  const preview = React.useMemo(() => {
+    if (!markdown.trim()) return null
+    const { title, blocks } = splitMarkdown(markdown)
+    return {
+      title,
+      chars: Array.from(blocks.map(plainOf).join('').replace(/\s/g, '')).length,
+      images: countMarkdownImages(blocks),
+      transfers: feishuImageUrls(blocks.map(text => ({ text }))).length,
+    }
+  }, [markdown])
+  const close = () => { if (!locked) setState({ dialog: null }) }
   const submit = async event => {
     event.preventDefault()
+    if (locked) return
     setBusy(true)
     const ok = await act('articles/new', tab === 'paste' ? { markdown } : { topic, material })
     setBusy(false)
@@ -398,18 +708,47 @@ export function NewDialog() {
   }
   return (
     <div className="ws-scrim" onMouseDown={e => { if (e.target === e.currentTarget) close() }}>
-      <form className="ws-dialog" role="dialog" aria-modal="true" aria-label="新建文章" onSubmit={submit}>
+      <form className={`ws-dialog ${tab === 'paste' ? 'ws-import-dialog' : ''}`} role="dialog" aria-modal="true" aria-label="新建文章" onSubmit={submit}>
         <div className="ws-dialog-head">
           <div className="ws-tabs" role="tablist">
-            <button type="button" role="tab" aria-selected={tab === 'paste'} className={tab === 'paste' ? 'is-on' : ''} onClick={() => setTab('paste')}>贴入已有文章</button>
-            <button type="button" role="tab" aria-selected={tab === 'write'} className={tab === 'write' ? 'is-on' : ''} onClick={() => setTab('write')}>从选题写</button>
+            <button type="button" role="tab" disabled={locked} aria-selected={tab === 'paste'} className={tab === 'paste' ? 'is-on' : ''} onClick={() => setTab('paste')}>贴入已有文章</button>
+            <button type="button" role="tab" disabled={locked} aria-selected={tab === 'write'} className={tab === 'write' ? 'is-on' : ''} onClick={() => setTab('write')}>从选题写</button>
           </div>
           <button type="button" className="ws-icon-btn" aria-label="关闭" onClick={close}><Icon name="close" /></button>
         </div>
         {tab === 'paste' ? (
-          <label className="ws-field"><span>文章 Markdown</span>
-            <textarea required rows={12} value={markdown} placeholder="把写好的文章贴进来。飞书导出的 Markdown 可以直接贴。" onChange={e => setMarkdown(e.target.value)} />
-          </label>
+          <div className="ws-import-workbench">
+            <div className={`ws-import-source ${dragging ? 'is-dragging' : ''}`} onDragOver={dragOver}
+              onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget)) setDragging(false) }} onDrop={drop}>
+              <div className="ws-import-source-head">
+                <label htmlFor="ws-import-markdown">文章 Markdown</label>
+                <button type="button" className="ws-btn" disabled={locked} onClick={() => fileInput.current?.click()}>
+                  <Icon name="upload" />{reading ? '正在读取…' : fileName ? '更换文件' : '选择文件'}
+                </button>
+                <input ref={fileInput} type="file" accept=".md,.markdown" hidden onChange={event => {
+                  void readFiles(event.target.files)
+                  event.target.value = ''
+                }} />
+              </div>
+              <textarea id="ws-import-markdown" required readOnly={locked} rows={preview ? 12 : 8} value={markdown}
+                placeholder="粘贴 Markdown，或把 .md 文件拖到这里" onChange={event => setMarkdown(event.target.value)} />
+              {fileName ? <p className="ws-import-file-name" title={fileName}>已载入 {fileName}</p> : null}
+              {fileError ? <p className="ws-warn" role="alert">{fileError}</p> : null}
+            </div>
+            <aside className="ws-import-summary" aria-label="导入预检">
+              <h3><Icon name="doc" />导入预检</h3>
+              {preview ? <>
+                <div className="ws-import-title"><span>识别到的标题</span><strong>{preview.title || '未识别到一级标题'}</strong></div>
+                <dl className="ws-import-metrics">
+                  <div><dt>估算字数</dt><dd>{preview.chars.toLocaleString('zh-CN')}</dd></div>
+                  <div><dt>正文图片</dt><dd>{preview.images}</dd></div>
+                </dl>
+                <p className="ws-import-transfer"><Icon name="upload" />{preview.transfers
+                  ? `${preview.transfers} 张飞书图片将在导入后后台转存`
+                  : '没有需要转存的飞书图片'}</p>
+              </> : <p className="ws-muted">载入 Markdown 后，在这里查看标题、字数和图片。</p>}
+            </aside>
+          </div>
         ) : (
           <>
             <label className="ws-field"><span>选题</span>
@@ -422,7 +761,7 @@ export function NewDialog() {
         )}
         <div className="ws-dialog-foot">
           <button type="button" className="ws-btn" onClick={close}>取消</button>
-          <button type="submit" className="ws-btn is-primary" disabled={busy}>{tab === 'paste' ? '放上稿面' : '开始写'}</button>
+          <button type="submit" className="ws-btn is-primary" disabled={locked || (tab === 'paste' && !preview)}>{busy ? (tab === 'paste' ? '正在导入…' : '正在创建…') : (tab === 'paste' ? '放上稿面' : '开始写')}</button>
         </div>
       </form>
     </div>
@@ -488,6 +827,11 @@ function ModelDialog() {
 
 function SettingsDialog() {
   const settings = useStudio(s => s.settings)
+  const [page, setPage] = React.useState('brand')
+  const [cloudinary, setCloudinary] = React.useState({})
+  const [brand, setBrand] = React.useState({})
+  const [arkModel, setArkModel] = React.useState(null)
+  const [arkKey, setArkKey] = React.useState('')
   const [key, setKey] = React.useState('')
   const [endpoint, setEndpoint] = React.useState(null)
   const [fixed, setFixed] = React.useState(null)
@@ -496,11 +840,23 @@ function SettingsDialog() {
   React.useEffect(() => { loadSettings() }, [])
   const close = () => setState({ dialog: null })
   if (!settings) return <div className="ws-scrim"><div className="ws-dialog"><span className="ws-shimmer">正在读取设置…</span></div></div>
+  const pages = [
+    { id: 'brand', title: '公众号品牌', icon: 'doc', description: '设置开头横幅和文末关注卡的品牌文案。' },
+    { id: 'cover', title: '封面生成', icon: 'spark', description: '配置火山方舟的生图模型和凭证。', ready: settings.arkKeySet, link: 'https://ark.volcengine.com/region:cn-beijing/apikey', linkLabel: '火山方舟 API Key' },
+    { id: 'storage', title: '图片图床', icon: 'upload', description: '将飞书图片自动转存到 Cloudinary，供排版预览使用。', ready: Boolean(settings.cloudinary?.cloudName && settings.cloudinary?.apiKey && settings.cloudinary?.apiSecretSet), link: 'https://console.cloudinary.com/settings/api-keys', linkLabel: 'Cloudinary API Keys' },
+    { id: 'quality', title: '朱雀质检', icon: 'scan', description: '管理检测凭证和需要排除的固定文案。', ready: settings.zhuqueKeySet, link: 'https://console.cloud.tencent.com/edgeone', linkLabel: 'EdgeOne 控制台' },
+  ]
+  const selected = pages.find(item => item.id === page)
   const endpointValue = endpoint ?? (settings.zhuqueEndpointDefault ? '' : settings.zhuqueEndpoint)
   const fixedValue = fixed ?? settings.fixedLines.join('\n')
   const patch = () => {
     const out = { zhuqueEndpoint: endpointValue, fixedLines: fixedValue.split('\n') }
+    out.brand = brand
+    out.arkModel = arkModel ?? settings.arkModel
+    if (arkKey.trim()) out.arkKey = arkKey.trim()
     if (key.trim()) out.zhuqueKey = key.trim()
+    out.cloudinary = { ...cloudinary }
+    if (out.cloudinary.apiSecret === '') delete out.cloudinary.apiSecret
     return out
   }
   const runTest = async () => {
@@ -519,43 +875,92 @@ function SettingsDialog() {
   }
   return (
     <div className="ws-scrim" onMouseDown={e => { if (e.target === e.currentTarget) close() }}>
-      <form className="ws-dialog" role="dialog" aria-modal="true" aria-label="设置" onSubmit={submit}>
+      <form className="ws-dialog ws-settings-dialog" role="dialog" aria-modal="true" aria-label="设置" onSubmit={submit}>
         <div className="ws-dialog-head">
           <h2 className="ws-dialog-title">设置</h2>
           <button type="button" className="ws-icon-btn" aria-label="关闭" onClick={close}><Icon name="close" /></button>
         </div>
 
-        <fieldset className="ws-group">
-          <legend>朱雀检测</legend>
-          <label className="ws-field"><span>API Key{settings.zhuqueKeySet ? <em className="ws-ok">已保存，末四位 {settings.zhuqueKeyTail}</em> : null}</span>
-            <input type="password" value={key} autoComplete="off" spellCheck={false} placeholder={settings.zhuqueKeySet ? '留空表示不改' : '粘贴 EdgeOne Makers 的 API Key'} onChange={e => { setKey(e.target.value); setTest(null) }} />
-          </label>
-          <p className="ws-muted ws-small">在腾讯云 EdgeOne 控制台的 Makers → Models → API Key 里创建。密钥只存在这台电脑上，检测时直接发给腾讯云的接口。</p>
-          <div className="ws-row-actions">
-            <button type="button" className="ws-btn" disabled={test?.running || (!key.trim() && !settings.zhuqueKeySet)} onClick={runTest}>{test?.running ? '正在测试…' : '测试连接'}</button>
-            {settings.zhuqueKeySet ? <button type="button" className="ws-link" onClick={clearKey}>清除已保存的 Key</button> : null}
-            {test?.ok ? <span className="ws-ok"><Icon name="check" size={13} />能用{test.tokens !== null && test.tokens !== undefined ? `，这次测试用了 ${test.tokens} token` : ''}</span> : null}
+        <div className="ws-settings-body">
+          <nav className="ws-settings-nav" aria-label="设置分类">
+            {pages.map(item => (
+              <button key={item.id} type="button" aria-current={page === item.id ? 'page' : undefined}
+                onClick={() => setPage(item.id)}><Icon name={item.icon} /><span>{item.title}</span></button>
+            ))}
+          </nav>
+          <div className="ws-settings-content">
+            <div className="ws-settings-section-head">
+              <h3>{selected.title}</h3>
+              {selected.ready !== undefined ? <span className={`ws-settings-status ${selected.ready ? 'ws-ok' : 'ws-muted'}`}>{selected.ready ? '已配置' : '未配置'}</span> : null}
+            </div>
+            <p className="ws-settings-description ws-muted">{selected.description}</p>
+            {selected.link ? <a className="ws-link ws-settings-provider" href={selected.link} target="_blank" rel="noreferrer">{selected.linkLabel} ↗</a> : null}
+
+            <fieldset className="ws-group ws-settings-fields" hidden={page !== 'brand'}>
+              <label className="ws-field"><span>账号名称</span>
+                <input value={brand.author ?? settings.brand?.author ?? ''} maxLength={32}
+                  onChange={e => setBrand({ ...brand, author: e.target.value })} />
+              </label>
+              <label className="ws-field"><span>Slogan</span>
+                <input value={brand.slogan ?? settings.brand?.slogan ?? ''} maxLength={80}
+                  onChange={e => setBrand({ ...brand, slogan: e.target.value })} />
+              </label>
+              <p className="ws-muted ws-small">用于开头横幅和文末关注卡。清空并保存可恢复默认文案。</p>
+            </fieldset>
+            <fieldset className="ws-group ws-settings-fields" hidden={page !== 'cover'}>
+              <label className="ws-field"><span>图片模型</span>
+                <select value={arkModel ?? settings.arkModel} onChange={e => setArkModel(e.target.value)}>
+                  {COVER_MODELS.map(model => <option key={model.id} value={model.id}>{model.name}</option>)}
+                </select>
+              </label>
+              <label className="ws-field"><span>API Key</span>
+                <input type="password" autoComplete="off" value={arkKey} onChange={e => setArkKey(e.target.value)}
+                  placeholder={settings.arkKeySet ? '已保存，留空表示不改' : '输入火山方舟 API Key'} />
+              </label>
+            </fieldset>
+            <fieldset className="ws-group ws-settings-fields" hidden={page !== 'storage'}>
+              {['cloudName', 'apiKey', 'apiSecret'].map((field, index) => (
+                <label className="ws-field" key={field}><span>{['Cloud Name', 'API Key', 'API Secret'][index]}</span>
+                  <input type={field === 'apiSecret' ? 'password' : 'text'} autoComplete="off" spellCheck={false}
+                    value={cloudinary[field] ?? settings.cloudinary?.[field] ?? ''}
+                    placeholder={field === 'apiSecret' && settings.cloudinary?.apiSecretSet ? '已保存，留空表示不改' : ''}
+                    onChange={e => setCloudinary({ ...cloudinary, [field]: e.target.value })} />
+                </label>
+              ))}
+            </fieldset>
+
+            <fieldset className="ws-group ws-settings-fields" hidden={page !== 'quality'}>
+              <label className="ws-field"><span>API Key{settings.zhuqueKeySet ? <em className="ws-ok">已保存，末四位 {settings.zhuqueKeyTail}</em> : null}</span>
+                <input type="password" value={key} autoComplete="off" spellCheck={false} placeholder={settings.zhuqueKeySet ? '留空表示不改' : '粘贴 EdgeOne Makers 的 API Key'} onChange={e => { setKey(e.target.value); setTest(null) }} />
+              </label>
+              <p className="ws-muted ws-small">在腾讯云 EdgeOne 控制台的 Makers → Models → API Key 里创建。密钥只存在这台电脑上，检测时直接发给腾讯云的接口。</p>
+              <div className="ws-row-actions">
+                <button type="button" className="ws-btn" disabled={test?.running || (!key.trim() && !settings.zhuqueKeySet)} onClick={runTest}>{test?.running ? '正在测试…' : '测试连接'}</button>
+                {settings.zhuqueKeySet ? <button type="button" className="ws-link" onClick={clearKey}>清除已保存的 Key</button> : null}
+                {test?.ok ? <span className="ws-ok"><Icon name="check" size={13} />能用{test.tokens !== null && test.tokens !== undefined ? `，这次测试用了 ${test.tokens} token` : ''}</span> : null}
+              </div>
+              {test?.error ? <p className="ws-warn">{test.error}</p> : null}
+              <details className="ws-manual">
+                <summary>高级</summary>
+                <label className="ws-field"><span>接口地址</span>
+                  <input type="url" value={endpointValue} spellCheck={false} placeholder="留空用默认的 EdgeOne 网关" onChange={e => { setEndpoint(e.target.value); setTest(null) }} />
+                </label>
+              </details>
+            </fieldset>
+
+            <fieldset className="ws-group ws-settings-fields" hidden={page !== 'quality'}>
+              <legend>检测时去掉的固定句</legend>
+              <label className="ws-field"><span>每行一句。检测文本里含有这些文字的行会整行去掉</span>
+                <textarea rows={3} value={fixedValue} onChange={e => setFixed(e.target.value)} />
+              </label>
+              <p className="ws-muted ws-small">每篇都一样的开头语、结尾引导会和正文混进同一个片段，把分数拉高。</p>
+            </fieldset>
+
           </div>
-          {test?.error ? <p className="ws-warn">{test.error}</p> : null}
-          <details className="ws-manual">
-            <summary>高级</summary>
-            <label className="ws-field"><span>接口地址</span>
-              <input type="url" value={endpointValue} spellCheck={false} placeholder="留空用默认的 EdgeOne 网关" onChange={e => { setEndpoint(e.target.value); setTest(null) }} />
-            </label>
-          </details>
-        </fieldset>
-
-        <fieldset className="ws-group">
-          <legend>检测时去掉的固定句</legend>
-          <label className="ws-field"><span>每行一句。检测文本里含有这些文字的行会整行去掉</span>
-            <textarea rows={3} value={fixedValue} onChange={e => setFixed(e.target.value)} />
-          </label>
-          <p className="ws-muted ws-small">每篇都一样的开头语、结尾引导会和正文混进同一个片段，把分数拉高。</p>
-        </fieldset>
-
+        </div>
         <div className="ws-dialog-foot">
           <button type="button" className="ws-btn" onClick={close}>取消</button>
-          <button type="submit" className="ws-btn is-primary" disabled={busy}>保存</button>
+          <button type="submit" className="ws-btn is-primary" disabled={busy}>{busy ? '正在保存…' : '保存设置'}</button>
         </div>
       </form>
     </div>
@@ -652,8 +1057,15 @@ function SkillsView() {
 function PaperModule({ data }) {
   const view = useStudio(s => s.view)
   const chatOpen = useStudio(s => s.chatOpen)
+  const [review, setReview] = React.useState(null)
   const article = data.current
   if (!article) return <Empty model={data.model} />
+  const reviewTarget = review?.articleId === article.id ? review.blockId : null
+  const jumpToReview = blockId => {
+    setReview({ articleId: article.id, blockId })
+    const row = document.getElementById(`ws-review-${article.id}-${blockId}`)
+    row?.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
+  }
   const flagged = article.blocks.filter(b => b.check?.status === 'flag').length
   const retest = article.blocks.filter(b => b.check?.status === 'fixed').length
   return (
@@ -671,16 +1083,26 @@ function PaperModule({ data }) {
         <ModelButton data={data} />
         <button type="button" className="ws-icon-btn" aria-label="设置" title="设置" onClick={() => setState({ dialog: 'settings' })}><Icon name="gear" /></button>
       </header>
+      {article.imageImport ? (
+        <div className={`ws-banner ${article.imageImport.error ? 'is-error' : ''}`} role="status">
+          <span>{article.imageImport.error
+            ? `飞书图片转存未完成。 ${article.imageImport.error}`
+            : `正在转存飞书图片（${article.imageImport.done}/${article.imageImport.total}），可以继续编辑正文。`}</span>
+          {article.imageImport.error ? (
+            <button type="button" className="ws-btn" onClick={() => act('images/retry')}>重试转存</button>
+          ) : null}
+        </div>
+      ) : null}
       {article.notice ? (
         <div className={`ws-banner ${article.notice.error ? 'is-error' : ''}`} role="status">
           <span>{article.notice.text}</span>
           <button type="button" className="ws-icon-btn" aria-label="关闭提示" onClick={() => act('notice/clear', {}, { quiet: true })}><Icon name="close" size={14} /></button>
         </div>
       ) : null}
-      <div className={`ws-body ${chatOpen ? '' : 'no-chat'}`}>
-        {chatOpen ? <ChatPane article={article} /> : null}
-        <main className="ws-main">{view === 'layout' ? <LayoutView article={article} /> : <Paper article={article} />}</main>
-        {view === 'paper' ? <SidePane article={article} flagged={flagged} ready={data.zhuqueReady} /> : null}
+      <div className={`ws-body ${chatOpen && view !== 'layout' ? '' : 'no-chat'}`}>
+        {chatOpen && view !== 'layout' ? <ChatPane article={article} /> : null}
+        <main className="ws-main">{view === 'layout' ? <LayoutView article={article} /> : <Paper article={article} reviewTarget={reviewTarget} />}</main>
+        {view === 'paper' ? <SidePane article={article} flagged={flagged} ready={data.zhuqueReady} reviewTarget={reviewTarget} onReviewJump={jumpToReview} /> : null}
       </div>
     </>
   )
@@ -702,6 +1124,8 @@ export function Studio() {
     <>
       <Rail module={item.id} />
       <div className="ws-col">{content}</div>
+      {dialog === 'cover-history' && data?.current ? <CoverHistoryDialog key={data.current.id} article={data.current} /> : null}
+      {dialog === 'cover' && data?.current ? <CoverStyleDialog key={data.current.id} article={data.current} /> : null}
       {dialog === 'new' ? <NewDialog /> : null}
       {dialog === 'settings' ? <SettingsDialog /> : null}
       {dialog === 'model' ? <ModelDialog /> : null}

@@ -415,3 +415,66 @@ test('一键处理流水线：中途停止只改完已经开始的组，某组�
   assert.equal(calls.length, 3, '停止后不再开新的组')
   assert.match(saved.notice.text, /已停止：处理了 3 段，改写 2 段，还有 9 段没动.*1 段这次没改成/)
 })
+
+test('飞书 Markdown 导入：先打开稿面，后台上传去重，预览更新，失败后可重试', async () => {
+  const { route } = await import('../src/host.js')
+  const store = new Store(mkdtempSync(join(tmpdir(), 'ws-cloudinary-')))
+  const url = 'https://internal-api-drive-stream.feishu.cn/space/api/box/stream/download/authcode/?code=temporary'
+  const cdn = 'https://res.cloudinary.com/demo/image/upload/example.png'
+  const source = '# 标题\n\n![一](<'+ url +'> "说明")\n\n![二]('+ url +')\n\n```md\n![例子]('+ url +')\n```'
+  const config = { cloudName: 'demo', apiKey: 'key', apiSecret: 'local-secret' }
+  const settings = publicSettings(await updateSettings(store.root, { cloudinary: config }))
+  assert.equal(settings.cloudinary.apiSecretSet, true)
+  assert.ok(!JSON.stringify(settings).includes(config.apiSecret))
+  let calls = 0
+  let reject = false
+  let release
+  const uploading = new Promise(resolve => { release = resolve })
+  const deps = {
+    ctx: { get: () => null }, store, pipeline: { job: () => null },
+    fetchImpl: async (endpoint, { body }) => {
+      calls++
+      assert.equal(endpoint, 'https://api.cloudinary.com/v1_1/demo/image/upload')
+      assert.equal(body.get('file'), url)
+      assert.match(body.get('signature'), /^[a-f0-9]{64}$/)
+      assert.equal(body.get('api_secret'), null)
+      await uploading
+      return reject ? new Response(null, { status: 400 }) : Response.json({ secure_url: cdn })
+    },
+  }
+  async function request(path, payload) {
+    const req = { url: '/wechat-studio/' + path, method: payload ? 'POST' : 'GET',
+      async *[Symbol.asyncIterator]() { if (payload) yield Buffer.from(JSON.stringify(payload)) } }
+    let result
+    await route(deps, req, { setHeader() {}, end(value) { result = JSON.parse(value) } })
+    return result
+  }
+  async function waitForImport() {
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const { current } = await request('state')
+      if (!current.imageImport?.total) return current
+      await new Promise(resolve => setTimeout(resolve, 10))
+    }
+    assert.fail('后台转存未结束')
+  }
+  const { current } = await request('articles/new', { markdown: source, titles: false })
+  assert.deepEqual(current.imageImport, { total: 1, done: 0 })
+  await store.update(state => { state.articles[0].blocks[0].text += '\n正文编辑' })
+  release()
+  await waitForImport()
+  assert.equal(calls, 1)
+  const state = await store.read()
+  const markdown = toMarkdown(state.articles[0])
+  assert.ok(markdown.includes('![一](<' + cdn + '> "说明")'))
+  assert.ok(markdown.includes('正文编辑'))
+  assert.ok(markdown.includes('![二](' + cdn + ')'))
+  assert.ok(markdown.includes('![例子](' + url + ')'))
+  assert.ok((await request('layout')).html.replaceAll('\\"', '"').includes('<img src="' + cdn + '"'))
+  reject = true
+  const failed = await request('articles/new', { markdown: source, titles: false })
+  assert.match((await waitForImport()).imageImport.error, /第 1 张飞书图片转存失败/)
+  assert.equal((await store.read()).articles.length, 2)
+  reject = false
+  await request('images/retry', { id: failed.current.id })
+  assert.equal((await waitForImport()).imageImport, null)
+})

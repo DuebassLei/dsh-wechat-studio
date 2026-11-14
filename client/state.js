@@ -38,15 +38,15 @@ async function request(path, options) {
   return body
 }
 
-const bodyKey = current => (current ? [current.id, current.title, current.banner?.style, current.banner?.at, ...current.blocks.map(b => b.text)].join('\u0001') : '')
+const bodyKey = (current, brand) => (current ? [current.id, current.title, current.banner?.style, current.banner?.at, current.followCard, brand?.author, brand?.slogan, ...current.blocks.map(b => b.text)].join('\u0001') : '')
 
 function accept(data) {
-  setState({ data, error: null })
   const current = data.current
   // 正文变了，之前排好的版式就过期了
-  if (snap.layout?.key !== undefined && snap.layout.key !== bodyKey(current)) setState({ layout: null })
+  const layout = snap.layout?.key === bodyKey(current, data.brand) ? snap.layout : null
+  setState({ data, error: null, layout })
   clearTimeout(timer)
-  if (current?.job) timer = setTimeout(refresh, 900)
+  if (current?.job || current?.coverJob || current?.imageImport?.total) timer = setTimeout(refresh, 900)
 }
 
 export async function refresh() {
@@ -124,12 +124,14 @@ export async function copyMarkdown() {
 export async function loadLayout() {
   const id = snap.data?.current?.id
   if (!id) return
-  setState({ layout: { loading: true } })
+  const key = bodyKey(snap.data.current, snap.data.brand)
+  const loading = { loading: true, key }
+  setState({ layout: loading })
   try {
     const result = await request(`layout?id=${encodeURIComponent(id)}`)
-    setState({ layout: { html: result.html, report: result.report, key: bodyKey(snap.data?.current) } })
+    if (snap.layout === loading) setState({ layout: { html: result.html, report: result.report, key } })
   } catch (err) {
-    setState({ layout: { error: err.message } })
+    if (snap.layout === loading) setState({ layout: { error: err.message, key } })
   }
 }
 

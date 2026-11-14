@@ -1139,22 +1139,94 @@ button.ghost{border:1.5px solid #C9643E;background:#fff;color:#C9643E;padding:8p
 .phone h1{font-size:22px;line-height:1.4;margin:0 0 18px;color:#111}
 #manual{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:9}
 #manual>div{background:#fff;border-radius:12px;padding:18px;width:min(720px,90vw)} #manual textarea{width:100%;height:220px;font-size:12px;box-sizing:border-box}
+body{height:100vh;display:flex;flex-direction:column;background:#eeefec;color:#222}
+*{box-sizing:border-box}
+.bar{position:relative;top:auto;flex:none;display:flex;justify-content:space-between;gap:8px;padding:10px 16px;background:#fcfcfa}
+.bar b{width:auto;flex:1;min-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.actions{display:flex;gap:6px;align-items:center}
+button.go{background:#252a26;padding:9px 14px}
+button.subtle,.actions summary{font:inherit;font-size:13px;padding:8px 10px;border:1px solid #dedfda;border-radius:8px;background:white;cursor:pointer;color:#252a26}
+.actions details{position:relative}
+.actions .menu{position:absolute;right:0;top:calc(100% + 7px);min-width:150px;padding:5px;background:white;border:1px solid #dedfda;border-radius:9px;box-shadow:0 8px 24px #0002}
+.menu button{display:block;width:100%;text-align:left;border:0;background:white;padding:8px;cursor:pointer;white-space:nowrap}
+.menu button:hover{background:#f0f2ee}
+#m:empty{display:none}
+.workbench{display:grid;grid-template-columns:minmax(0,1fr) 290px;flex:1;min-height:0;position:relative}
+.workbench.settings-closed{grid-template-columns:minmax(0,1fr)}
+.canvas{min-width:0;overflow:auto;padding:24px clamp(12px,3vw,44px) 48px;background-image:radial-gradient(#232d2317 1px,transparent 1px);background-size:16px 16px}
+.phone{max-width:684px;margin:0 auto;padding:28px clamp(14px,3vw,26px);box-shadow:0 2px 3px #0001,0 12px 38px #0001;border:1px solid #e4e5df}
+.settings{overflow:auto;background:#fcfcfa;border-left:1px solid #dedfda;padding:16px;min-width:0}
+.settings h2{font-size:15px;margin:0 0 14px}
+.settings section{padding:14px 0;border-top:1px solid #e7e8e3}
+.settings h3{margin:0 0 9px;font-size:13px}
+.settings .row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+.settings .palette{grid-template-columns:repeat(5,minmax(0,1fr))}
+.settings .sw{border:1px solid #e6e7e1;background:white;border-radius:7px;padding:6px 3px;justify-content:center;font-size:12px}
+.settings .sw.on{border-color:#4a6c54;background:#edf4ed;color:#24452e}
+.settings .palette .sw{flex-direction:column;gap:4px}
+.settings .palette i{margin:0}
+.settings label{display:block;font-size:12px;margin:8px 0 5px}
+.settings input[type=text]{width:100%;padding:7px;border:1px solid #dedfda;border-radius:6px}
+.settings input[type=file]{width:100%;font-size:12px}
+.settings .follow{display:flex;align-items:center;justify-content:space-between;font-size:13px;margin:0}
+.follow input{appearance:none;width:36px;height:21px;border-radius:20px;background:#777880;cursor:pointer;margin:0}
+.follow input::before{content:"";display:block;width:17px;height:17px;margin:2px;background:white;border-radius:50%}
+.follow input:checked{background:#24863d}
+.follow input:checked::before{transform:translateX(15px)}
+#banner-actions{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:8px;font-size:12px}
+@media(max-width:780px){.workbench{grid-template-columns:minmax(0,1fr)}.settings{position:absolute;inset:0 0 0 auto;width:min(290px,100%);z-index:2;box-shadow:-6px 0 20px #0002}.bar{padding-inline:10px}.actions{margin-left:auto}}
 </style></head><body>
-<div class="bar"><b>__TITLE__</b>
-<div class="row"><label>风格</label><span id="sts" class="row" style="width:auto"></span></div>
-<div class="row"><label>配色</label><span id="sws" class="row" style="width:auto"></span></div>
-<label>头像 GIF</label><input type="text" id="gif" placeholder="https://mmbiz.qpic.cn/mmbiz_gif/…">
-<label>本地预览</label><input type="file" id="local" accept="image/*">
+<header class="bar"><b>__TITLE__</b>
+<div class="actions">
+<button class="subtle" id="settings-toggle" type="button" aria-controls="layout-settings" aria-expanded="true">排版设置</button>
 <button class="go" onclick="copyAll(this)">复制全文到公众号</button>
-<button class="ghost" onclick="copyPart(this,'banner')">只复制横幅</button>
-<button class="ghost" onclick="copyPart(this,'body')">只复制正文</button>
-<button class="ghost" onclick="copyMd(this)" title="纯正文，去掉了图片、视频、动画卡和占位，方便贴到朱雀做 AI 检测">复制 Markdown</button>
-<div id="m"></div></div>
-<div class="phone"><h1>__TITLE__</h1><div id="pv"></div></div>
+<details id="copy-menu"><summary aria-label="其他复制方式">更多</summary><div class="menu">
+<button onclick="copyPart(this,'banner')">只复制横幅</button>
+<button onclick="copyPart(this,'body')">只复制正文</button>
+<button onclick="copyMd(this)">复制 Markdown</button>
+</div></details></div>
+<div id="m" role="status"></div></header>
+<div class="workbench">
+<main class="canvas"><article class="phone"><h1>__TITLE__</h1><div id="pv"></div></article></main>
+<aside class="settings" id="layout-settings" aria-label="排版设置">
+<h2>排版设置</h2>
+<section><h3>正文风格</h3><div id="sts" class="row"></div></section>
+<section><h3>配色</h3><div id="sws" class="row palette"></div></section>
+<section id="studio-options" hidden>
+<h3>开头横幅</h3><div id="banner-choices" class="row"></div><div id="banner-actions"><span id="banner-status" role="status"></span><button type="button" class="subtle" id="banner-generate">重新生成</button></div>
+</section>
+<section id="follow-options" hidden><label class="follow">文末关注卡 <input id="follow-card" type="checkbox" role="switch"></label></section>
+<section><h3>头像</h3>
+<label for="gif">公众号图片地址</label><input type="text" id="gif" placeholder="https://mmbiz.qpic.cn/…">
+<label for="local">本地图片预览</label><input type="file" id="local" accept="image/*"></section>
+</aside></div>
 <div id="manual"><div><b>浏览器没让我写剪贴板，请手动复制</b><p style="font-size:13px;color:#666">已全选，按 ⌘C / Ctrl+C。</p><textarea readonly></textarea><p style="text-align:right"><button class="ghost" onclick="document.getElementById('manual').style.display='none'">关闭</button></p></div></div>
 <script>
 const D=__DATA__;
 const G=document.getElementById('gif'),L=document.getElementById('local');
+const settings=document.getElementById('layout-settings'), settingsToggle=document.getElementById('settings-toggle');
+function toggleSettings(open){settings.hidden=!open;settings.parentElement.classList.toggle('settings-closed',!open);
+  settingsToggle.setAttribute('aria-expanded',String(open));}
+toggleSettings(ls('lq_layout_panel')===null?!matchMedia('(max-width:780px)').matches:ls('lq_layout_panel')==='open');
+settingsToggle.onclick=()=>{toggleSettings(settings.hidden);ls('lq_layout_panel',settings.hidden?'closed':'open')};
+document.getElementById('copy-menu').addEventListener('click',event=>{if(event.target.closest('button'))event.currentTarget.open=false});
+window.setStudioOptions=(state, action)=>{
+  const options=document.getElementById('studio-options'), choices=document.getElementById('banner-choices');
+  options.hidden=false;
+  choices.replaceChildren(...state.banner.choices.map(choice=>{
+    const b=document.createElement('button');b.type='button';b.className='sw'+(choice.id===state.banner.style?' on':'');
+    b.textContent=choice.name;b.disabled=state.busy;b.setAttribute('aria-pressed',String(choice.id===state.banner.style));
+    b.onclick=()=>{if(choice.id!==state.banner.style)action('banner/style',{style:choice.id})};return b;
+  }));
+  document.getElementById('banner-status').textContent=state.status;
+  const generate=document.getElementById('banner-generate');
+  generate.hidden=state.banner.style==='none';generate.disabled=state.busy;
+  generate.textContent=state.banner.ready?'重新生成':'生成';generate.onclick=()=>action('banner/generate',{});
+  const follow=document.getElementById('follow-card');
+  document.getElementById('follow-options').hidden=typeof state.followCard!=='boolean';
+  follow.checked=state.followCard===true;follow.disabled=state.followPending;
+  follow.onchange=()=>{const enabled=follow.checked;follow.checked=state.followCard;action('layout/follow-card',{enabled})};
+};
 function ls(k,v){try{if(v===undefined)return localStorage.getItem(k);localStorage.setItem(k,v)}catch(e){return null}}
 G.value=ls('lq_banner_gif')||''; let local=ls('lq_banner_gif_local')||'';
 let theme=D.fixed_theme?D.default_theme:(ls('lq_layout_theme')||D.default_theme); if(!D.palette[theme])theme=D.default_theme;
@@ -1163,8 +1235,8 @@ function esc(u){return u.replace(/&/g,'&amp;').replace(/"/g,'&quot;')}
 function paint(h){for(const k in D.tokens)h=h.split(D.tokens[k]).join(D.palette[theme][k]);return h}
 function parts(u){const BN=(style=='neo'&&D.banner_neo)?D.banner_neo:D.banner;const b=BN?(BN[theme]||BN._):'';return {banner:b.split('GIF_URL_HERE').join(u),body:paint(D.styles[style]).split('GIF_URL_HERE').join(u)}}
 function render(){const p=parts(esc(local||G.value.trim()||''));document.getElementById('pv').innerHTML=(p.banner?'<section style="margin:0 0 24px">'+p.banner+'</section>':'')+p.body;
-  document.getElementById('sts').innerHTML=Object.keys(D.styles).map(k=>'<span class="sw st'+(k==style?' on':'')+'" title="'+D.style_desc[k]+'" onclick="pickS(\''+k+'\')">'+D.style_names[k]+'</span>').join('');
-  document.getElementById('sws').innerHTML=Object.keys(D.palette).map(k=>'<span class="sw'+(k==theme?' on':'')+'" onclick="pick(\''+k+'\')"><i style="background:'+D.palette[k].main+'"></i>'+D.names[k]+'</span>').join('')}
+  document.getElementById('sts').innerHTML=Object.keys(D.styles).map(k=>'<button type="button" class="sw st'+(k==style?' on':'')+'" title="'+D.style_desc[k]+'" onclick="pickS(\''+k+'\')">'+D.style_names[k]+'</button>').join('');
+  document.getElementById('sws').innerHTML=Object.keys(D.palette).map(k=>'<button type="button" class="sw'+(k==theme?' on':'')+'" onclick="pick(\''+k+'\')"><i style="background:'+D.palette[k].main+'"></i>'+D.names[k]+'</button>').join('')}
 function pick(k){theme=k;ls('lq_layout_theme',k);render()}
 function pickS(k){style=k;ls('lq_layout_style',k);render()}
 G.addEventListener('input',()=>{ls('lq_banner_gif',G.value.trim());render()});
@@ -1172,9 +1244,9 @@ L.addEventListener('change',()=>{const f=L.files[0];if(!f)return;const r=new Fil
 render();
 function msg(t,ok){const m=document.getElementById('m');m.textContent=t;m.className=ok?'ok':'err'}
 function flash(b,t){const o=b.dataset.l||b.textContent;b.dataset.l=o;b.textContent=t;setTimeout(()=>b.textContent=o,1800)}
-function need(){const u=G.value.trim();const raw=parts('GIF_URL_HERE');if((raw.banner+raw.body).indexOf('GIF_URL_HERE')<0)return parts('');
-  if(!u){msg('先在顶部填头像 GIF 的公众号图片地址（横幅和文末作者卡都会用到）',false);G.focus();return null}
-  if(!/^https:\/\/mmbiz\.qpic\.cn\//.test(u)){msg('头像地址要以 https://mmbiz.qpic.cn/ 开头（公众号图库里的图）',false);G.focus();return null}
+function need(part){const u=G.value.trim();const raw=parts('GIF_URL_HERE');if((part?raw[part]:raw.banner+raw.body).indexOf('GIF_URL_HERE')<0)return parts('');
+  if(!u){msg('请填写头像的公众号图片地址',false);toggleSettings(true);G.focus();return null}
+  if(!/^https:\/\/mmbiz\.qpic\.cn\//.test(u)){msg('头像地址要以 https://mmbiz.qpic.cn/ 开头（公众号图库里的图）',false);toggleSettings(true);G.focus();return null}
   return parts(esc(u))}
 function legacy(h,p){let d=false;const f=e=>{e.clipboardData.setData('text/html',h);e.clipboardData.setData('text/plain',p);e.preventDefault();d=true};
   document.addEventListener('copy',f);let ok=false;try{ok=document.execCommand('copy')}catch(e){}document.removeEventListener('copy',f);return ok&&d}
@@ -1187,15 +1259,21 @@ async function copyMd(b){const t=D.md||'';let ok=false;
   try{await navigator.clipboard.writeText(t);ok=true}catch(e){}
   if(!ok){const f=e=>{e.clipboardData.setData('text/plain',t);e.preventDefault();ok=true};document.addEventListener('copy',f);try{document.execCommand('copy')}catch(e){}document.removeEventListener('copy',f)}
   if(ok){flash(b,'已复制 ✓');msg('已复制 Markdown（'+t.length+' 字），可以贴到朱雀做检测',true)}else{msg('浏览器没让写剪贴板，请手动复制',false);manual(t)}}
-async function copyPart(b,k){const p=need();if(!p)return;if(!p[k]){msg('这篇没有横幅',false);return}send(b,p[k],k=='banner'?'横幅':'正文')}
+async function copyPart(b,k){const p=need(k);if(!p)return;if(!p[k]){msg('这篇没有横幅',false);return}send(b,p[k],k=='banner'?'横幅':'正文')}
 </script></body></html>"""
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("md"); ap.add_argument("--banner"); ap.add_argument("--out", default="out")
     ap.add_argument("--style", choices=list(STYLES)); ap.add_argument("--theme", choices=list(THEMES))
+    ap.add_argument("--outro", choices=["true", "false"])
+    ap.add_argument("--brand-author")
+    ap.add_argument("--brand-slogan")
     a = ap.parse_args()
     meta, md = front_matter(clean_md(open(a.md, encoding="utf-8").read()))
+    brand = {k: v for k, v in (("author", a.brand_author), ("slogan", a.brand_slogan)) if v}
+    meta.update(brand)
+    if a.outro is not None: meta["outro"] = a.outro
     m = re.search(r"^#\s+(.+)$", md, re.M)
     title = meta.get("title") or (m.group(1).strip() if m else os.path.splitext(os.path.basename(a.md))[0])
     slug = meta.get("slug") or re.sub(r"[^\w一-鿿-]+", "-", title)[:30].strip("-") or "article"
@@ -1213,6 +1291,7 @@ def main():
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import banner as B
         spec = json.load(open(a.banner, encoding="utf-8"))
+        if brand: spec["brand"] = brand
         key = "card" if spec.get("style") == "card" else "poster"
         if spec.get("style") in ("card", "poster", "neo") and spec.get(key, {}).get("theme", "all") == "all":
             for k, T in THEMES.items():   # 标题卡 / 大字海报 / 潮酷横幅跟着配色换色

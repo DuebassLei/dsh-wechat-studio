@@ -1,3 +1,4 @@
+import { COVER_MODELS } from './cover-options.js'
 // 设置：存在 <DSH_HOME>/wechat-studio/settings.json（权限 600）。
 // 朱雀 API Key 只留在本机，接口从不把明文返回给页面，只说「有没有」和末四位。
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
@@ -6,6 +7,13 @@ import { checkEndpoint, DEFAULT_ENDPOINT } from './zhuque.js'
 
 // 每篇都一样的固定句：检测时整行去掉，避免和正文混进同一个片段把分数拉高
 const DEFAULTS = { fixedLines: ['设为「星标」', '教你用AI干掉90%的重复劳动'], style: null, theme: null, zhuqueKey: '', zhuqueEndpoint: DEFAULT_ENDPOINT, model: { provider: '', model: '' } }
+
+const DEFAULT_BRAND = {
+  author: '林月半子的AI笔记',
+  slogan: '我是林月半子，教你用AI干掉90%的重复劳动',
+}
+
+const brandField = (value, limit) => typeof value === 'string' ? value.trim().slice(0, limit) : ''
 
 const lines = value => (Array.isArray(value) ? value.filter(v => typeof v === 'string').map(v => v.trim()).filter(Boolean).slice(0, 20) : null)
 
@@ -18,6 +26,17 @@ export async function readSettings(root) {
   }
   return {
     ...DEFAULTS, ...saved,
+    brand: {
+      author: brandField(saved.brand?.author, 32) || DEFAULT_BRAND.author,
+      slogan: brandField(saved.brand?.slogan, 80) || DEFAULT_BRAND.slogan,
+    },
+    arkModel: COVER_MODELS.find(model => model.id === saved.arkModel)?.id ?? COVER_MODELS[0].id,
+    arkKey: typeof saved.arkKey === 'string' ? saved.arkKey : '',
+    cloudinary: {
+      cloudName: typeof saved.cloudinary?.cloudName === 'string' ? saved.cloudinary.cloudName : '',
+      apiKey: typeof saved.cloudinary?.apiKey === 'string' ? saved.cloudinary.apiKey : '',
+      apiSecret: typeof saved.cloudinary?.apiSecret === 'string' ? saved.cloudinary.apiSecret : '',
+    },
     fixedLines: lines(saved.fixedLines) ?? DEFAULTS.fixedLines,
     zhuqueKey: typeof saved.zhuqueKey === 'string' ? saved.zhuqueKey : '',
     zhuqueEndpoint: typeof saved.zhuqueEndpoint === 'string' && saved.zhuqueEndpoint ? saved.zhuqueEndpoint : DEFAULT_ENDPOINT,
@@ -37,6 +56,25 @@ export async function updateSettings(root, body) {
   if (lines(body.fixedLines)) next.fixedLines = lines(body.fixedLines)
   if (typeof body.zhuqueKey === 'string') next.zhuqueKey = body.zhuqueKey.trim().slice(0, 400)
   if (typeof body.zhuqueEndpoint === 'string') next.zhuqueEndpoint = body.zhuqueEndpoint.trim() ? checkEndpoint(body.zhuqueEndpoint.trim()) : DEFAULT_ENDPOINT
+  if (body.brand && typeof body.brand === 'object') {
+    if (typeof body.brand.author === 'string') next.brand.author = brandField(body.brand.author, 32) || DEFAULT_BRAND.author
+    if (typeof body.brand.slogan === 'string') next.brand.slogan = brandField(body.brand.slogan, 80) || DEFAULT_BRAND.slogan
+  }
+  if (body.arkModel !== undefined) {
+    if (!COVER_MODELS.some(model => model.id === body.arkModel)) {
+      throw Object.assign(new Error('请选择支持的封面模型。'), { status: 400 })
+    }
+    next.arkModel = body.arkModel
+  }
+  if (typeof body.arkKey === 'string') next.arkKey = body.arkKey.trim().slice(0, 400)
+  if (body.cloudinary && typeof body.cloudinary === 'object') {
+    for (const field of ['cloudName', 'apiKey', 'apiSecret']) {
+      if (typeof body.cloudinary[field] === 'string') next.cloudinary[field] = body.cloudinary[field].trim().slice(0, 400)
+    }
+    if (next.cloudinary.cloudName && !/^[a-zA-Z0-9_-]+$/.test(next.cloudinary.cloudName)) {
+      throw Object.assign(new Error('Cloudinary Cloud Name 只能包含字母、数字、下划线和短横线。'), { status: 400 })
+    }
+  }
   if (body.model && typeof body.model === 'object') {
     const provider = typeof body.model.provider === 'string' ? body.model.provider.trim().slice(0, 200) : ''
     const model = typeof body.model.model === 'string' ? body.model.model.trim().slice(0, 200) : ''
@@ -56,6 +94,14 @@ export function publicSettings(settings) {
   const key = settings.zhuqueKey
   return {
     fixedLines: settings.fixedLines,
+    brand: settings.brand,
+    arkModel: settings.arkModel,
+    arkKeySet: Boolean(settings.arkKey),
+    cloudinary: {
+      cloudName: settings.cloudinary?.cloudName ?? '',
+      apiKey: settings.cloudinary?.apiKey ?? '',
+      apiSecretSet: Boolean(settings.cloudinary?.apiSecret),
+    },
     zhuqueKeySet: Boolean(key),
     zhuqueKeyTail: key ? key.slice(-4) : '',
     zhuqueEndpoint: settings.zhuqueEndpoint,

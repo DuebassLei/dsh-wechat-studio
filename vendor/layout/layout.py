@@ -338,7 +338,7 @@ def hr(T):
     return box + "".join(f'<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:{c};margin:0 6px;"></span>' for c in (T["tint"], M, T["tint"])) + '</section>'
 
 def video_slot(name, T):
-    return (f'<section style="margin:20px 0;border:1.5px dashed {T["line"]};border-radius:12px;background:{T["soft"]};padding:18px 16px;text-align:center;">'
+    return (f'<section data-video-slot="{esc(name)}" style="margin:20px 0;border:1.5px dashed {T["line"]};border-radius:12px;background:{T["soft"]};padding:18px 16px;text-align:center;">'
             f'<p style="margin:0 0 4px;font-size:15px;font-weight:700;color:{T["main"]};">此处放视频：{esc(name)}</p>'
             f'<p style="margin:0;font-size:13px;color:#888888;">在公众号编辑器里插入视频或动图，然后删掉这个方框</p></section>')
 
@@ -1151,6 +1151,14 @@ button.subtle,.actions summary{font:inherit;font-size:13px;padding:8px 10px;bord
 .menu button{display:block;width:100%;text-align:left;border:0;background:white;padding:8px;cursor:pointer;white-space:nowrap}
 .menu button:hover{background:#f0f2ee}
 #m:empty{display:none}
+.actions #review-panel{width:min(380px,calc(100vw - 24px));white-space:normal;padding:12px}
+#review-panel h3{font-size:13px;margin:8px 0 4px}
+#review-panel ul{margin:0;padding-left:20px;font-size:13px;line-height:1.6}
+#review-panel .go{margin-top:10px}
+#review-panel button[hidden]{display:none}
+#review-stats{font-size:12px;color:#555;margin:8px 0 0}
+[data-video-slot]{scroll-margin-block:20px}
+[data-video-slot]:focus{outline:2px solid #4a6c54;outline-offset:3px}
 .workbench{display:grid;grid-template-columns:minmax(0,1fr) 290px;flex:1;min-height:0;position:relative}
 .workbench.settings-closed{grid-template-columns:minmax(0,1fr)}
 .canvas{min-width:0;overflow:auto;padding:24px clamp(12px,3vw,44px) 48px;background-image:radial-gradient(#232d2317 1px,transparent 1px);background-size:16px 16px}
@@ -1179,7 +1187,11 @@ button.subtle,.actions summary{font:inherit;font-size:13px;padding:8px 10px;bord
 <header class="bar"><b>__TITLE__</b>
 <div class="actions">
 <button class="subtle" id="settings-toggle" type="button" aria-controls="layout-settings" aria-expanded="true">排版设置</button>
-<button class="go" onclick="copyAll(this)">复制全文到公众号</button>
+<details id="review"><summary>自查报告</summary><div id="review-panel" class="menu">
+<div id="review-items"></div><p id="review-stats"></p>
+<button type="button" class="go" id="review-copy" hidden>确认并复制全文</button>
+</div></details>
+<button class="go" id="copy-all" onclick="copyAll(this)">复制全文到公众号</button>
 <details id="copy-menu"><summary aria-label="其他复制方式">更多</summary><div class="menu">
 <button onclick="copyPart(this,'banner')">只复制横幅</button>
 <button onclick="copyPart(this,'body')">只复制正文</button>
@@ -1234,14 +1246,63 @@ let style=D.fixed_style?D.default_style:(ls('lq_layout_style')||D.default_style)
 function esc(u){return u.replace(/&/g,'&amp;').replace(/"/g,'&quot;')}
 function paint(h){for(const k in D.tokens)h=h.split(D.tokens[k]).join(D.palette[theme][k]);return h}
 function parts(u){const BN=(style=='neo'&&D.banner_neo)?D.banner_neo:D.banner;const b=BN?(BN[theme]||BN._):'';return {banner:b.split('GIF_URL_HERE').join(u),body:paint(D.styles[style]).split('GIF_URL_HERE').join(u)}}
+const review=document.getElementById('review'), reviewCopy=document.getElementById('review-copy');
+const popovers=[review,document.getElementById('copy-menu')];
+window.dismissLayoutPopovers=()=>{for(const panel of popovers)panel.open=false};
+document.addEventListener('pointerdown',event=>{
+  for(const panel of popovers){if(panel.open&&!panel.contains(event.target))panel.open=false;}
+});
+document.addEventListener('keydown',event=>{
+  if(event.key!=='Escape')return;
+  const opened=popovers.find(panel=>panel.open);
+  if(!opened)return;
+  window.dismissLayoutPopovers();
+  opened.querySelector('summary').focus();
+});
+function renderReview(){
+  const root=document.getElementById('review-items');root.replaceChildren();
+  const videos=[...document.querySelectorAll('#pv [data-video-slot]')];
+  const groups=[
+    ['复制前确认',D.review?.before||[]],
+    ['到公众号编辑器处理',videos],
+    ['排版提示',D.review?.notes||[]],
+  ];
+  for(const [title,items] of groups){
+    if(!items.length)continue;
+    const heading=document.createElement('h3');heading.textContent=title;root.append(heading);
+    const list=document.createElement('ul');root.append(list);
+    for(const item of items){
+      const li=document.createElement('li');list.append(li);
+      if(typeof item==='string'){li.textContent=item;continue;}
+      const button=document.createElement('button');button.type='button';
+      button.textContent='插入视频：'+item.dataset.videoSlot;
+      button.onclick=()=>{review.open=false;item.tabIndex=-1;item.focus({preventScroll:true});item.scrollIntoView({block:'center'});};
+      li.append(button);
+    }
+  }
+  if(!root.childNodes.length)root.textContent='没有待处理项。';
+  review.querySelector('summary').textContent='自查报告'+(groups[0][1].length||videos.length?'（'+(groups[0][1].length+videos.length)+'）':'');
+  document.getElementById('review-stats').textContent=D.review?.stats||'';
+}
+reviewCopy.onclick=()=>copyAll(document.getElementById('copy-all'),true);
+for(const panel of popovers)panel.addEventListener('toggle',()=>{
+  if(panel.open)for(const other of popovers){if(other!==panel)other.open=false;}
+});
+review.addEventListener('toggle',()=>{if(!review.open)reviewCopy.hidden=true});
 function render(){const p=parts(esc(local||G.value.trim()||''));document.getElementById('pv').innerHTML=(p.banner?'<section style="margin:0 0 24px">'+p.banner+'</section>':'')+p.body;
   document.getElementById('sts').innerHTML=Object.keys(D.styles).map(k=>'<button type="button" class="sw st'+(k==style?' on':'')+'" title="'+D.style_desc[k]+'" onclick="pickS(\''+k+'\')">'+D.style_names[k]+'</button>').join('');
-  document.getElementById('sws').innerHTML=Object.keys(D.palette).map(k=>'<button type="button" class="sw'+(k==theme?' on':'')+'" onclick="pick(\''+k+'\')"><i style="background:'+D.palette[k].main+'"></i>'+D.names[k]+'</button>').join('')}
+  document.getElementById('sws').innerHTML=Object.keys(D.palette).map(k=>'<button type="button" class="sw'+(k==theme?' on':'')+'" onclick="pick(\''+k+'\')"><i style="background:'+D.palette[k].main+'"></i>'+D.names[k]+'</button>').join('');renderReview()}
 function pick(k){theme=k;ls('lq_layout_theme',k);render()}
 function pickS(k){style=k;ls('lq_layout_style',k);render()}
 G.addEventListener('input',()=>{ls('lq_banner_gif',G.value.trim());render()});
 L.addEventListener('change',()=>{const f=L.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{local=r.result;ls('lq_banner_gif_local',local);render()};r.readAsDataURL(f)});
 render();
+if(D.studio_options){
+  const options=D.studio_options;
+  window.setStudioOptions({...options,busy:true,followPending:true,
+    status:options.banner.style==='none'?'':options.banner.ready?'已生成':'待生成'},()=>{});
+  window.frameElement?.dispatchEvent(new Event('studio-options-ready'));
+}
 function msg(t,ok){const m=document.getElementById('m');m.textContent=t;m.className=ok?'ok':'err'}
 function flash(b,t){const o=b.dataset.l||b.textContent;b.dataset.l=o;b.textContent=t;setTimeout(()=>b.textContent=o,1800)}
 function need(part){const u=G.value.trim();const raw=parts('GIF_URL_HERE');if((part?raw[part]:raw.banner+raw.body).indexOf('GIF_URL_HERE')<0)return parts('');
@@ -1254,7 +1315,9 @@ async function put(h){const t=h.replace(/<[^>]+>/g,'');if(legacy(h,t))return tru
   try{if(navigator.clipboard&&window.ClipboardItem){await navigator.clipboard.write([new ClipboardItem({'text/html':new Blob([h],{type:'text/html'}),'text/plain':new Blob([t],{type:'text/plain'})})]);return true}}catch(e){}return false}
 function manual(p){const d=document.getElementById('manual');const t=d.querySelector('textarea');t.value=p;d.style.display='flex';t.focus();t.select()}
 async function send(b,h,what){if(await put(h)){flash(b,'已复制 ✓');msg('已复制'+what+'（'+D.style_names[style]+' · '+D.names[theme]+'），去公众号编辑器正文里粘贴',true)}else{msg('这个窗口不允许写剪贴板：请用 Chrome 直接打开本文件',false);manual(h)}}
-async function copyAll(b){const p=need();if(!p)return;send(b,(p.banner?'<section style="margin:0 0 24px">'+p.banner+'</section>':'')+p.body,'全文')}
+async function copyAll(b,confirmed=false){const p=need();if(!p)return;
+  if(!confirmed&&D.review?.before.length){reviewCopy.hidden=false;review.open=true;return;}
+  review.open=false;send(b,(p.banner?'<section style="margin:0 0 24px">'+p.banner+'</section>':'')+p.body,'全文')}
 async function copyMd(b){const t=D.md||'';let ok=false;
   try{await navigator.clipboard.writeText(t);ok=true}catch(e){}
   if(!ok){const f=e=>{e.clipboardData.setData('text/plain',t);e.preventDefault();ok=true};document.addEventListener('copy',f);try{document.execCommand('copy')}catch(e){}document.removeEventListener('copy',f)}
@@ -1266,6 +1329,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("md"); ap.add_argument("--banner"); ap.add_argument("--out", default="out")
     ap.add_argument("--style", choices=list(STYLES)); ap.add_argument("--theme", choices=list(THEMES))
+    ap.add_argument("--studio-options", type=json.loads)
     ap.add_argument("--outro", choices=["true", "false"])
     ap.add_argument("--brand-author")
     ap.add_argument("--brand-slogan")
@@ -1306,7 +1370,16 @@ def main():
         else:
             banner = {"_": B.build(spec)}
         for x in B.check_spec(spec, list(banner.values())): warn("横幅：" + x)
-    data = {"styles": styles, "style_names": {k: v["name"] for k, v in STYLES.items()}, "style_desc": {k: v["desc"] for k, v in STYLES.items()},
+    issues = check(md, styles[style], "".join((banner or {}).values()), stat)
+    before = [issue for issue in issues if "飞书临时链接" in issue or "本地路径或 base64" in issue]
+    notes = [issue for issue in issues if issue not in before and not re.match(r"^\d+ 处视频占位", issue)]
+    prose = re.sub(r"(?ms)^\s*(```|~~~).*?^\s*\1[^\n]*", "", md)
+    placeholders = re.findall(r"\[(?:可补|截图)[：:][^\]\n]*\]", prose)
+    if placeholders:
+        before.append(f"还有 {len(placeholders)} 处稿件占位：" + "、".join(placeholders[:3]))
+    order = ["图片", "图注", "视频占位", "动画卡", "滑动卡"]
+    review = dict(before=before, notes=notes, stats="，".join(f"{k} {stat.get(k, 0)}" for k in order))
+    data = {"studio_options": a.studio_options, "review": review, "styles": styles, "style_names": {k: v["name"] for k, v in STYLES.items()}, "style_desc": {k: v["desc"] for k, v in STYLES.items()},
             "palette": {k: {c: v[c] for c in TOK} for k, v in THEMES.items()}, "names": {k: v["name"] for k, v in THEMES.items()}, "tokens": TOK,
             "banner": banner, "banner_neo": banner_neo, "default_theme": theme, "default_style": style,
             "fixed_theme": bool(a.theme or meta.get("theme")), "fixed_style": bool(a.style or meta.get("style")), "md": plain_md(md)}
@@ -1314,9 +1387,7 @@ def main():
     page = PAGE.replace("__TITLE__", esc(title)).replace("__DATA__", json.dumps(data, ensure_ascii=False).replace("</", "<\\/"))
     path = os.path.join(a.out, f"{slug}-公众号排版.html")
     open(path, "w", encoding="utf-8").write(page)
-    issues = check(md, styles[style], "".join((banner or {}).values()), stat)
     print(f"ok  {path}  （{os.path.getsize(path) // 1024} KB，默认：{STYLES[style]['name']} · {THEMES[theme]['name']}）")
-    order = ["图片", "图注", "视频占位", "动画卡", "滑动卡"]
     print("统计：" + "，".join(f"{k} {stat.get(k, 0)}" for k in order))
     if issues:
         print("发布前要处理：")

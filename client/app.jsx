@@ -10,7 +10,7 @@ import grungePreview from './assets/cover-styles/grunge.webp'
 import { COVER_STYLES } from '../src/cover-styles.js'
 // 稿面：左边对话改稿，中间是稿子和纸边批注，右边是标题、朱雀质检和导出。
 import React from 'react'
-import { act, copyDetectionText, copyMarkdown, copyText, loadLayout, loadModels, loadSettings, loadSkills, saveSettings, setState, testZhuque, uploadReport, useStudio } from './state.js'
+import { act, copyDetectionText, copyMarkdown, copyText, loadLayout, loadModels, loadSettings, loadSkills, saveSettings, setState, testZhuque, toast, uploadReport, useStudio } from './state.js'
 
 const ICONS = {
   check: 'M3 8.5l3.2 3.2L13 5',
@@ -201,6 +201,16 @@ function LayoutView({ article }) {
   const layout = useStudio(s => s.layout)
   const tried = useStudio(s => s.bannerTried)
   const frame = React.useRef(null)
+  React.useEffect(() => {
+    const dismiss = () => frame.current?.contentWindow?.dismissLayoutPopovers?.()
+    const onKeyDown = event => { if (event.key === 'Escape') dismiss() }
+    document.addEventListener('pointerdown', dismiss, true)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', dismiss, true)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [])
   const enhanced = layout?.html?.includes('window.setStudioOptions=')
   const syncOptions = () => {
     const banner = article.banner
@@ -217,7 +227,12 @@ function LayoutView({ article }) {
       // The frame is replaced when a new preview arrives.
     }
   }
-  React.useEffect(syncOptions, [article, layout, pending])
+  React.useLayoutEffect(() => {
+    syncOptions()
+    const iframe = frame.current
+    iframe?.addEventListener('studio-options-ready', syncOptions)
+    return () => iframe?.removeEventListener('studio-options-ready', syncOptions)
+  }, [article, layout, pending])
   const banner = article.banner
   const tryKey = `${article.id}:${banner.style}`
   // 第一次打开排版、当前风格还没有横幅时，自动做一次；失败了不再自动重试
@@ -234,8 +249,10 @@ function LayoutView({ article }) {
   else {
     content = (
       <>
-        <details className="ws-layout-report"><summary>自查报告</summary><pre>{layout.report}</pre></details>
-        <iframe ref={frame} onLoad={syncOptions} className="ws-frame" title="公众号排版预览" srcDoc={layout.html} allow="clipboard-write" />
+        {!layout.html.includes('id="review-panel"') ? (
+          <details className="ws-layout-report"><summary>自查报告</summary><pre>{layout.report}</pre></details>
+        ) : null}
+        <iframe key={layout.key} ref={frame} onLoad={syncOptions} className="ws-frame" title="公众号排版预览" srcDoc={layout.html} allow="clipboard-write" />
       </>
     )
   }
@@ -404,6 +421,7 @@ function CoverStyleDialog({ article }) {
 const coverRunStatus = { running: '进行中', succeeded: '完成', partial: '部分完成', failed: '失败', interrupted: '已中断' }
 
 function CoverHistoryDialog({ article }) {
+  const pending = useStudio(s => s.pending)
   const runs = article.coverRuns ?? []
   const historyAvailable = Array.isArray(article.coverRuns)
   const [selectedId, setSelectedId] = React.useState(null)
@@ -443,8 +461,18 @@ function CoverHistoryDialog({ article }) {
                 {run.images.map((image, index) => (
                   <figure key={image.id}>
                     <img src={imageUrl(image.id)} alt={`封面 ${index + 1}`} loading="lazy" />
-                    <figcaption><span>封面 {index + 1}</span>
-                      <a className="ws-link" href={imageUrl(image.id) + '&download=1'} download={`cover.${run.format ?? 'png'}`}>下载</a>
+                    <figcaption>
+                      <span>封面 {index + 1}</span>
+                      <div className="ws-history-image-actions">
+                        {article.cover?.id === image.id ? <span className="ws-ok"><Icon name="check" size={13} />当前封面</span> : (
+                          <button type="button" className="ws-link" disabled={Boolean(article.coverJob) || pending === 'cover/select'}
+                            onClick={async () => {
+                              setSelectedId(run.id)
+                              if (await act('cover/select', { id: article.id, asset: image.id })) toast('已设为当前封面')
+                            }}>设为当前封面</button>
+                        )}
+                        <a className="ws-link" href={imageUrl(image.id) + '&download=1'} download={`cover.${run.format ?? 'png'}`}>下载</a>
+                      </div>
                     </figcaption>
                   </figure>
                 ))}
@@ -600,22 +628,73 @@ function SidePane({ article, flagged, ready, reviewTarget, onReviewJump }) {
   )
 }
 
+const draftDate = new Intl.DateTimeFormat('zh-CN', {
+  year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
+})
+
 function Switcher({ data }) {
   const [open, setOpen] = React.useState(false)
+  const [query, setQuery] = React.useState('')
+  const root = React.useRef(null)
+  const trigger = React.useRef(null)
+  const panelId = React.useId()
   const current = data.current
+  const terms = query.normalize('NFKC').trim().toLowerCase().split(/\s+/).filter(Boolean)
+  const results = data.articles.filter(item => {
+    const title = item.title.normalize('NFKC').toLowerCase()
+    return terms.every(term => title.includes(term))
+  })
+  const close = () => { setOpen(false); setQuery('') }
+  React.useEffect(() => {
+    if (!open) return
+    const dismiss = event => { if (!root.current?.contains(event.target)) close() }
+    document.addEventListener('pointerdown', dismiss)
+    return () => document.removeEventListener('pointerdown', dismiss)
+  }, [open])
+  const pick = item => {
+    close()
+    trigger.current?.focus()
+    if (item.id === current?.id) return
+    setState({ view: 'paper', editing: null })
+    act('articles/select', { id: item.id })
+  }
   return (
-    <div className="ws-switch">
-      <button type="button" className="ws-switch-btn" aria-expanded={open} onClick={() => setOpen(v => !v)}>
+    <div className="ws-switch" ref={root} onKeyDown={event => {
+      if (open && event.key === 'Escape') {
+        event.stopPropagation()
+        close()
+        trigger.current?.focus()
+      }
+    }}>
+      <button type="button" className="ws-switch-btn" ref={trigger} aria-expanded={open} aria-controls={open ? panelId : undefined}
+        onClick={() => open ? close() : setOpen(true)}>
         <span>{current?.title || current?.topic || '未命名文章'}</span><Icon name="down" size={14} />
       </button>
       {open ? (
-        <div className="ws-menu" role="menu">
-          {data.articles.map(item => (
-            <button type="button" role="menuitem" key={item.id} className={item.id === current?.id ? 'is-on' : ''} onClick={() => { setOpen(false); setState({ view: 'paper', editing: null }); act('articles/select', { id: item.id }) }}>
-              <span>{item.title}</span><small>{item.chars} 字</small>
-            </button>
-          ))}
-          <button type="button" role="menuitem" className="ws-menu-new" onClick={() => { setOpen(false); setState({ dialog: 'new' }) }}><Icon name="plus" size={14} />新建文章</button>
+        <div className="ws-menu ws-draft-picker" id={panelId} role="region" aria-label="查找文章">
+          <div className="ws-draft-search">
+            <input autoFocus type="search" aria-label="搜索文章标题" placeholder="搜索文章标题…" value={query}
+              onChange={event => setQuery(event.target.value)} onKeyDown={event => {
+                if (event.key !== 'Enter' || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229 || !results.length) return
+                event.preventDefault()
+                pick(results[0])
+              }} />
+          </div>
+          <div className="ws-draft-list-label" role="status">{terms.length ? `找到 ${results.length} 篇` : '最近编辑'}</div>
+          <div className="ws-draft-results">
+            {results.map(item => {
+              const date = new Date(item.updatedAt)
+              const edited = Number.isNaN(date.getTime()) ? '' : draftDate.format(date)
+              return (
+                <button type="button" key={item.id} className={item.id === current?.id ? 'is-on' : ''} aria-current={item.id === current?.id ? 'true' : undefined} onClick={() => pick(item)}>
+                  <div className="ws-draft-result"><span title={item.title}>{item.title}</span><small>{[edited, `${item.chars} 字`].filter(Boolean).join(' · ')}</small></div>
+                  {item.id === current?.id ? <Icon name="check" size={14} /> : null}
+                </button>
+              )
+            })}
+            {!results.length ? <p className="ws-draft-empty">没有找到匹配的文章。</p> : null}
+          </div>
+          <button type="button" className="ws-menu-new" onClick={() => { close(); setState({ dialog: 'new' }) }}><Icon name="plus" size={14} />新建文章</button>
         </div>
       ) : null}
     </div>
@@ -704,7 +783,7 @@ export function NewDialog() {
     setBusy(true)
     const ok = await act('articles/new', tab === 'paste' ? { markdown } : { topic, material })
     setBusy(false)
-    if (ok) setState({ dialog: null, view: 'paper', editing: null })
+    if (ok) setState({ dialog: null, module: 'paper', paperHome: false, view: 'paper', editing: null })
   }
   return (
     <div className="ws-scrim" onMouseDown={e => { if (e.target === e.currentTarget) close() }}>
@@ -1000,7 +1079,7 @@ function Rail({ module }) {
   return (
     <nav className="ws-rail" aria-label="模块">
       {MODULES.map(item => (
-        <button type="button" key={item.id} className={module === item.id ? 'is-on' : ''} aria-current={module === item.id ? 'page' : undefined} onClick={() => setState({ module: item.id })}>
+        <button type="button" key={item.id} className={module === item.id ? 'is-on' : ''} aria-current={module === item.id ? 'page' : undefined} onClick={() => setState({ module: item.id, ...(item.id === 'paper' ? { paperHome: true } : {}) })}>
           <Icon name={item.icon} size={20} />
           <span>{item.label}</span>
           {item.soon ? <small>即将</small> : null}
@@ -1071,7 +1150,7 @@ function PaperModule({ data }) {
   return (
     <>
       <header className="ws-top" data-window-drag="">
-        <nav className="ws-crumb" aria-label="当前位置"><span>稿面</span><span aria-hidden="true">/</span><Switcher data={data} /></nav>
+        <nav className="ws-crumb" aria-label="当前位置"><button type="button" className="ws-link" onClick={() => setState({ paperHome: true })}>稿面</button><span aria-hidden="true">/</span><Switcher data={data} /></nav>
         <Steps article={article} flagged={flagged} retest={retest} />
         <span className="ws-grow" />
         <div className="ws-tabs" role="tablist" aria-label="视图">
@@ -1083,14 +1162,22 @@ function PaperModule({ data }) {
         <ModelButton data={data} />
         <button type="button" className="ws-icon-btn" aria-label="设置" title="设置" onClick={() => setState({ dialog: 'settings' })}><Icon name="gear" /></button>
       </header>
-      {article.imageImport ? (
-        <div className={`ws-banner ${article.imageImport.error ? 'is-error' : ''}`} role="status">
-          <span>{article.imageImport.error
-            ? `飞书图片转存未完成。 ${article.imageImport.error}`
-            : `正在转存飞书图片（${article.imageImport.done}/${article.imageImport.total}），可以继续编辑正文。`}</span>
-          {article.imageImport.error ? (
-            <button type="button" className="ws-btn" onClick={() => act('images/retry')}>重试转存</button>
-          ) : null}
+      {article.imageImport?.error ? (
+        <div className="ws-banner is-error" role="status">
+          <span>飞书图片转存未完成。{article.imageImport.error}</span>
+          <button type="button" className="ws-btn" onClick={() => act('images/retry')}>重试转存</button>
+        </div>
+      ) : article.imageImport?.total ? (
+        <div className="ws-transfer-banner">
+          <span className="ws-transfer-icon"><Icon name="upload" size={18} /></span>
+          <div className="ws-transfer-content">
+            <div className="ws-transfer-heading">
+              <strong>正在后台转存飞书图片</strong>
+              <span>{article.imageImport.done} / {article.imageImport.total} 张</span>
+            </div>
+            <progress aria-label="飞书图片转存进度" value={article.imageImport.done} max={article.imageImport.total} />
+            <p className="ws-muted ws-small">正文已导入，可以继续编辑。</p>
+          </div>
         </div>
       ) : null}
       {article.notice ? (
@@ -1108,16 +1195,86 @@ function PaperModule({ data }) {
   )
 }
 
+function DraftArtwork({ draft }) {
+  const [failed, setFailed] = React.useState(false)
+  return (
+    <div className="ws-draft-art">
+      {draft.coverId && !failed ? (
+        <img src={`wechat-studio/cover/image?${new URLSearchParams({ id: draft.id, asset: draft.coverId })}`}
+          alt="" loading="lazy" onError={() => setFailed(true)} />
+      ) : <span aria-hidden="true">{draft.title}</span>}
+    </div>
+  )
+}
+
+function DraftHome({ data }) {
+  const [query, setQuery] = React.useState('')
+  const pending = useStudio(s => s.pending)
+  const drafts = data.articles
+  const featured = drafts.find(item => item.id === data.current?.id) ?? drafts[0]
+  const terms = query.normalize('NFKC').trim().toLowerCase().split(/\s+/).filter(Boolean)
+  const matches = drafts.filter(draft => terms.every(term => draft.title.normalize('NFKC').toLowerCase().includes(term)))
+  const open = async draft => {
+    if (pending) return
+    if (draft.id !== data.current?.id && !await act('articles/select', { id: draft.id })) return
+    setState({ paperHome: false, view: 'paper', editing: null })
+  }
+  const edited = draft => {
+    const date = new Date(draft.updatedAt)
+    return Number.isNaN(date.getTime()) ? '' : draftDate.format(date)
+  }
+  return (
+    <main className="ws-draft-home">
+      <header className="ws-draft-home-head">
+        <div><h1>稿面</h1><p className="ws-muted">{drafts.length} 篇稿件</p></div>
+        <div className="ws-draft-home-tools">
+          <input type="search" aria-label="搜索稿件标题" placeholder="搜索稿件标题…" value={query} onChange={e => setQuery(e.target.value)} />
+          <button type="button" className="ws-btn is-primary" onClick={() => setState({ dialog: 'new' })}><Icon name="plus" />新建文章</button>
+        </div>
+      </header>
+      {featured && !terms.length ? (
+        <section className="ws-draft-feature">
+          <div className="ws-draft-feature-copy">
+            <span className="ws-muted ws-small">{featured.id === data.current?.id ? '上次打开' : '最近编辑'}</span>
+            <h2>{featured.title}</h2>
+            <p className="ws-muted ws-small">{[edited(featured), `${featured.chars} 字`].filter(Boolean).join(' · ')}</p>
+            <button type="button" className="ws-btn is-primary" disabled={Boolean(pending)} onClick={() => open(featured)}>继续写作 <span aria-hidden="true">→</span></button>
+          </div>
+          <DraftArtwork key={featured.coverId || featured.id} draft={featured} />
+        </section>
+      ) : null}
+      <section className="ws-draft-shelf" aria-label="全部稿件">
+        <div className="ws-sec-head"><h2>{terms.length ? '搜索结果' : '全部稿件'}</h2><span className="ws-muted ws-small">{terms.length ? `${matches.length} 篇` : '按最近编辑排序'}</span></div>
+        {matches.length ? (
+          <div className="ws-draft-grid">
+            {matches.map(draft => (
+              <button type="button" className="ws-draft-card" key={draft.id} disabled={Boolean(pending)} onClick={() => open(draft)}>
+                <DraftArtwork key={draft.coverId || draft.id} draft={draft} />
+                <div className="ws-draft-card-copy">
+                  <strong>{draft.title}</strong>
+                  <span className="ws-muted ws-small">{[edited(draft), `${draft.chars} 字`].filter(Boolean).join(' · ')}</span>
+                  {draft.review || draft.checked ? <span className="ws-draft-review">{draft.review ? `${draft.review} 段待检查` : '已质检'}</span> : null}
+                </div>
+              </button>
+            ))}
+          </div>
+        ) : <p className="ws-draft-home-empty ws-muted">{terms.length ? '没有找到匹配的稿件。' : '还没有稿件。点「新建文章」粘贴 Markdown 或开始写作。'}</p>}
+      </section>
+    </main>
+  )
+}
+
 export function Studio() {
   const data = useStudio(s => s.data)
   const error = useStudio(s => s.error)
   const module = useStudio(s => s.module)
+  const paperHome = useStudio(s => s.paperHome)
   const dialog = useStudio(s => s.dialog)
   const note = useStudio(s => s.toast)
   const item = MODULES.find(m => m.id === module) ?? MODULES[1]
   let content
   if (!data) content = <div className="ws-center">{error ? <p className="ws-muted">加载失败：{error}</p> : <span className="ws-shimmer">正在打开稿面…</span>}</div>
-  else if (item.id === 'paper') content = <PaperModule data={data} />
+  else if (item.id === 'paper') content = paperHome ? <DraftHome data={data} /> : <PaperModule data={data} />
   else if (item.id === 'skills') content = <SkillsView />
   else content = <SoonView item={item} />
   return (

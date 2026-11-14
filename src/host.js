@@ -253,7 +253,10 @@ export async function route(deps, req, res) {
       const settings = await readSettings(store.root)
       const style = article.bannerStyle ?? DEFAULT_BANNER
       const banner = style === 'none' ? null : article.banners?.[style]?.spec ?? null
-      const { html, report } = await renderLayout(toMarkdown(article), { ...settings, banner, followCard: article.followCard === true })
+      const studioOptions = { banner: bannerView(article), followCard: article.followCard === true }
+      const { html, report } = await renderLayout(toMarkdown(article), {
+        ...settings, banner, followCard: studioOptions.followCard, studioOptions,
+      })
       return json(res, 200, { html, report })
     }
     return json(res, 404, { error: '没有这个接口' })
@@ -283,6 +286,27 @@ export async function route(deps, req, res) {
       startImageImport(deps, article, urls)
       if (!hasBody) pipeline.draft(article.id)
       else if (!article.titles.length && body.titles !== false) pipeline.titles(article.id)
+      return ok()
+    }
+    case 'cover/select': {
+      await store.update(async state => {
+        const article = mustFind(state, body.id)
+        if (coverJobMap(store).has(article.id)) {
+          throw Object.assign(new Error('请等当前封面生成结束后再切换。'), { status: 409 })
+        }
+        const runs = coverRuns(article)
+        const run = runs.find(entry => entry.images.some(image => image.id === body.asset))
+        if (!run) throw Object.assign(new Error('这篇文章没有这张封面。'), { status: 404 })
+        const { title, prompt, style, model, createdAt, resolution, count, format } = run
+        try {
+          await readCover(store.root, body.asset, format)
+        } catch {
+          throw Object.assign(new Error('封面文件不存在。'), { status: 404 })
+        }
+        article.coverRuns = runs
+        article.cover = { id: body.asset, title, prompt, style, model, createdAt, resolution, count, format }
+        touch(article)
+      })
       return ok()
     }
     case 'cover/generate': {

@@ -3,7 +3,7 @@ import React from 'react'
 
 const BASE = 'wechat-studio/'
 
-let snap = { data: null, error: null, view: 'paper', dialog: null, toast: null, editing: null, layout: null, pending: null, chatOpen: true, bannerTried: {}, module: 'paper', skills: null, settings: null }
+let snap = { data: null, error: null, view: 'paper', paperHome: true, dialog: null, toast: null, editing: null, layout: null, pending: null, chatOpen: true, bannerTried: {}, module: 'paper', skills: null, settings: null }
 const listeners = new Set()
 let timer = null
 

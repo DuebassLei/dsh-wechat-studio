@@ -187,7 +187,12 @@ export function numbered(article) {
 
 export function listMeta(article) {
   const chars = article.blocks.reduce((sum, block) => sum + plainOf(block.text).length, 0)
-  return { id: article.id, title: article.title || article.topic || '未命名文章', updatedAt: article.updatedAt, chars }
+  return {
+    id: article.id, title: article.title || article.topic || '未命名文章', updatedAt: article.updatedAt, chars,
+    coverId: article.cover?.id ?? null,
+    review: article.blocks.reduce((count, block) => count + Number(['flag', 'fixed'].includes(block.check?.status)), 0),
+    checked: Boolean(article.zhuque?.round),
+  }
 }
 
 /**

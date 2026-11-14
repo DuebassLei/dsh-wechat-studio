@@ -1222,7 +1222,13 @@ function toggleSettings(open){settings.hidden=!open;settings.parentElement.class
 toggleSettings(ls('lq_layout_panel')===null?!matchMedia('(max-width:780px)').matches:ls('lq_layout_panel')==='open');
 settingsToggle.onclick=()=>{toggleSettings(settings.hidden);ls('lq_layout_panel',settings.hidden?'closed':'open')};
 document.getElementById('copy-menu').addEventListener('click',event=>{if(event.target.closest('button'))event.currentTarget.open=false});
+let saveLayoutPreferences;
 window.setStudioOptions=(state, action)=>{
+  saveLayoutPreferences=state.layoutPreferences===undefined?undefined:action;
+  const saved=state.layoutPreferences;
+  if(saved&&D.styles[saved.style]&&D.palette[saved.theme]&&(style!==saved.style||theme!==saved.theme)){
+    style=saved.style;theme=saved.theme;render();
+  }
   const options=document.getElementById('studio-options'), choices=document.getElementById('banner-choices');
   options.hidden=false;
   choices.replaceChildren(...state.banner.choices.map(choice=>{
@@ -1292,15 +1298,31 @@ review.addEventListener('toggle',()=>{if(!review.open)reviewCopy.hidden=true});
 function render(){const p=parts(esc(local||G.value.trim()||''));document.getElementById('pv').innerHTML=(p.banner?'<section style="margin:0 0 24px">'+p.banner+'</section>':'')+p.body;
   document.getElementById('sts').innerHTML=Object.keys(D.styles).map(k=>'<button type="button" class="sw st'+(k==style?' on':'')+'" title="'+D.style_desc[k]+'" onclick="pickS(\''+k+'\')">'+D.style_names[k]+'</button>').join('');
   document.getElementById('sws').innerHTML=Object.keys(D.palette).map(k=>'<button type="button" class="sw'+(k==theme?' on':'')+'" onclick="pick(\''+k+'\')"><i style="background:'+D.palette[k].main+'"></i>'+D.names[k]+'</button>').join('');renderReview()}
-function pick(k){theme=k;ls('lq_layout_theme',k);render()}
-function pickS(k){style=k;ls('lq_layout_style',k);render()}
+let savingLayout=false;
+async function selectLayout(nextStyle,nextTheme){
+  if(savingLayout)return;
+  const previous={style,theme};
+  if(saveLayoutPreferences){
+    savingLayout=true;
+    style=nextStyle;theme=nextTheme;render();
+    try {
+      if(!await saveLayoutPreferences('layout/preferences',{style,theme})){
+        style=previous.style;theme=previous.theme;render();
+      }
+    } finally {savingLayout=false}
+  } else {
+    style=nextStyle;theme=nextTheme;ls('lq_layout_style',style);ls('lq_layout_theme',theme);render();
+  }
+}
+function pick(k){selectLayout(style,k)}
+function pickS(k){selectLayout(k,theme)}
 G.addEventListener('input',()=>{ls('lq_banner_gif',G.value.trim());render()});
 L.addEventListener('change',()=>{const f=L.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{local=r.result;ls('lq_banner_gif_local',local);render()};r.readAsDataURL(f)});
 render();
 if(D.studio_options){
   const options=D.studio_options;
   window.setStudioOptions({...options,busy:true,followPending:true,
-    status:options.banner.style==='none'?'':options.banner.ready?'已生成':'待生成'},()=>{});
+    status:options.banner.style==='none'?'':options.banner.ready?'已生成':'待生成'});
   window.frameElement?.dispatchEvent(new Event('studio-options-ready'));
 }
 function msg(t,ok){const m=document.getElementById('m');m.textContent=t;m.className=ok?'ok':'err'}

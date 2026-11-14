@@ -9,8 +9,8 @@ import { fileURLToPath } from 'node:url'
 const VENDOR = join(dirname(fileURLToPath(import.meta.url)), '..', 'vendor', 'layout')
 // 从访达启动的桌面应用 PATH 很短，Homebrew 的 python 不一定找得到，所以挨个试
 const PYTHONS = [process.env.WECHAT_STUDIO_PYTHON, 'python3', '/usr/bin/python3', '/opt/homebrew/bin/python3', '/usr/local/bin/python3'].filter(Boolean)
-const STYLES = ['std', 'mag', 'min', 'geek', 'bold', 'neo', 'note', 'zen', 'bento', 'dark']
-const THEMES = ['orange', 'blue', 'teal', 'ink', 'navy', 'violet', 'rose', 'amber', 'morandi', 'forest', 'petrol', 'mist', 'matcha', 'cocoa', 'dusty']
+export const STYLES = ['std', 'mag', 'min', 'geek', 'bold', 'neo', 'note', 'zen', 'bento', 'dark']
+export const THEMES = ['orange', 'blue', 'teal', 'ink', 'navy', 'violet', 'rose', 'amber', 'morandi', 'forest', 'petrol', 'mist', 'matcha', 'cocoa', 'dusty']
 
 function run(file, args, { input, cwd } = {}) {
   return new Promise((resolve, reject) => {

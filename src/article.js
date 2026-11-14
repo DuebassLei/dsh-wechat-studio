@@ -12,11 +12,11 @@ const HISTORY_MAX = 20
  * @param {string} markdown - 原文。
  * @returns {{front: string, title: string, blocks: string[]}} 切分结果。
  */
-export function splitMarkdown(markdown) {
+export function splitMarkdown(markdown, { bodyOnly = false } = {}) {
   let text = String(markdown ?? '').replace(/\r\n?/g, '\n')
   let front = ''
   const fm = /^---\n[\s\S]*?\n---\n?/.exec(text)
-  if (fm) {
+  if (fm && !bodyOnly) {
     front = fm[0].trim()
     text = text.slice(fm[0].length)
   }
@@ -41,7 +41,7 @@ export function splitMarkdown(markdown) {
   }
   flush()
   let title = ''
-  const head = blocks.findIndex(b => /^#\s+\S/.test(b) && !b.includes('\n'))
+  const head = bodyOnly ? -1 : blocks.findIndex(b => /^#\s+\S/.test(b) && !b.includes('\n'))
   if (head !== -1) title = blocks.splice(head, 1)[0].replace(/^#\s+/, '').trim()
   return { front, title, blocks }
 }
@@ -118,6 +118,38 @@ export function undo(article) {
   return last.label
 }
 
+/** 相邻快照就是一次修改前后的内容；按段落 ID 对齐，避免增删导致后续段落错位。 */
+export function revisionChanges(article) {
+  return article.history.map((before, index) => {
+    const after = article.history[index + 1] ?? article
+    const rows = []
+    if (before.title !== after.title) {
+      rows.push({ kind: 'title', before: before.title ? { text: before.title } : null, after: after.title ? { text: after.title } : null })
+    }
+    const oldBlocks = new Map(before.blocks.map((block, i) => [block.id, { text: block.text, number: i + 1 }]))
+    const newIds = new Set(after.blocks.map(block => block.id))
+    let cursor = 0
+    const deleted = block => rows.push({ kind: 'delete', before: oldBlocks.get(block.id), after: null })
+    after.blocks.forEach((block, i) => {
+      const old = oldBlocks.get(block.id)
+      if (old) {
+        while (cursor < old.number - 1) {
+          const pending = before.blocks[cursor++]
+          if (!newIds.has(pending.id)) deleted(pending)
+        }
+        cursor = Math.max(cursor, old.number)
+      }
+      if (!old || old.text !== block.text) {
+        rows.push({ kind: old ? 'rewrite' : 'insert', before: old ?? null, after: { text: block.text, number: i + 1 } })
+      }
+    })
+    for (const block of before.blocks.slice(cursor)) {
+      if (!newIds.has(block.id)) deleted(block)
+    }
+    return { index, label: before.label, at: before.at, rows }
+  }).filter(revision => revision.rows.length).reverse()
+}
+
 export function touch(article) {
   article.updatedAt = new Date().toISOString()
 }
@@ -189,6 +221,8 @@ export function listMeta(article) {
   const chars = article.blocks.reduce((sum, block) => sum + plainOf(block.text).length, 0)
   return {
     id: article.id, title: article.title || article.topic || '未命名文章', updatedAt: article.updatedAt, chars,
+    lastView: article.lastView === 'layout' ? 'layout' : 'paper',
+    archivedAt: article.archivedAt ?? null,
     coverId: article.cover?.id ?? null,
     review: article.blocks.reduce((count, block) => count + Number(['flag', 'fixed'].includes(block.check?.status)), 0),
     checked: Boolean(article.zhuque?.round),

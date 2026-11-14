@@ -4,12 +4,12 @@ import { COVER_RESOLUTIONS, COVER_FORMATS, MAX_COVER_COUNT } from './cover-optio
 import { join } from 'node:path'
 import { defaultSelection, listModels, modelInfo, modelOverride, modelStatus, setModelOverride, skillSources } from './ai.js'
 import { BANNER_CHOICES, BANNER_STYLES, DEFAULT_BANNER } from './banner.js'
-import { blockKind, createArticle, fixPlan, isCheckable, listMeta, snapshot, toMarkdown, touch, undo } from './article.js'
+import { blockKind, createArticle, fixPlan, isCheckable, listMeta, newId, revisionChanges, snapshot, splitMarkdown, toMarkdown, touch, undo } from './article.js'
 import { transferFeishuImages } from './cloudinary.js'
 import { feishuImageUrls, replaceFeishuImages } from './markdown-images.js'
 import { coverPrompt, generateArkCover, readCover, saveCover } from './cover.js'
 import { COVER_STYLES } from './cover-styles.js'
-import { detectionText, renderLayout } from './layout.js'
+import { STYLES, THEMES, detectionText, renderLayout } from './layout.js'
 import { Pipeline } from './pipeline.js'
 import { pdfToText } from './report.js'
 import { publicSettings, readSettings, updateSettings } from './settings.js'
@@ -162,11 +162,27 @@ function startImageImport(deps, article, urls) {
 
 function view(article, pipeline, store) {
   if (!article) return null
+  const currentText = new Map(article.blocks.map(block => [block.id, block.text]))
+  const previousText = new Map()
+  const restoredBlocks = new Set()
+  for (let i = article.history.length - 1; i >= 0; i--) {
+    for (const block of article.history[i].blocks) {
+      if (currentText.has(block.id) && currentText.get(block.id) !== block.text && !previousText.has(block.id)) {
+        previousText.set(block.id, block.text)
+        if (article.history[i].label === '恢复段落上一版') restoredBlocks.add(block.id)
+      }
+    }
+  }
   return {
     id: article.id, topic: article.topic, title: article.title, titles: article.titles, summary: article.summary,
-    blocks: article.blocks.map(block => ({ id: block.id, text: block.text, kind: blockKind(block.text), checkable: isCheckable(block.text), check: block.check, hasPrev: Boolean(block.prev) })),
+    blocks: article.blocks.map(block => ({
+      id: block.id, text: block.text, kind: blockKind(block.text), checkable: isCheckable(block.text), check: block.check,
+      hasPrev: Boolean(block.prev), previousText: previousText.get(block.id) ?? (block.prev !== block.text ? block.prev ?? null : null),
+      lastChangeWasRestore: restoredBlocks.has(block.id),
+    })),
     banner: bannerView(article),
     followCard: article.followCard === true,
+    layoutPreferences: article.layoutPreferences ?? null,
     fixPlan: (({ picked, skipped }) => ({ count: picked.length, skipped }))(fixPlan(article)),
     chat: article.chat.slice(-40), canUndo: article.history.length > 0, zhuque: article.zhuque, notice: article.notice ?? null,
     job: pipeline.job(article.id),
@@ -179,7 +195,7 @@ function view(article, pipeline, store) {
 
 async function snapshotState(ctx, store, pipeline) {
   const state = await store.read()
-  const current = state.articles.find(a => a.id === state.currentId) ?? null
+  const current = state.articles.find(a => a.id === state.currentId && !a.archivedAt) ?? null
   const info = modelInfo(ctx)
   const settings = await readSettings(store.root)
   return {
@@ -244,6 +260,10 @@ export async function route(deps, req, res) {
       if (url.searchParams.has('download')) res.setHeader('content-disposition', `attachment; filename="cover.${format}"`)
       return res.end(image)
     }
+    if (path === 'revisions') {
+      res.setHeader('cache-control', 'private, no-store')
+      return json(res, 200, { revisions: revisionChanges(article) })
+    }
     if (path === 'markdown') return json(res, 200, { markdown: toMarkdown(article) })
     if (path === 'detection-text') {
       const settings = await readSettings(store.root)
@@ -253,9 +273,12 @@ export async function route(deps, req, res) {
       const settings = await readSettings(store.root)
       const style = article.bannerStyle ?? DEFAULT_BANNER
       const banner = style === 'none' ? null : article.banners?.[style]?.spec ?? null
-      const studioOptions = { banner: bannerView(article), followCard: article.followCard === true }
+      const studioOptions = {
+        banner: bannerView(article), followCard: article.followCard === true,
+        layoutPreferences: article.layoutPreferences ?? null,
+      }
       const { html, report } = await renderLayout(toMarkdown(article), {
-        ...settings, banner, followCard: studioOptions.followCard, studioOptions,
+        ...settings, ...article.layoutPreferences, banner, followCard: studioOptions.followCard, studioOptions,
       })
       return json(res, 200, { html, report })
     }
@@ -280,6 +303,7 @@ export async function route(deps, req, res) {
       const urls = hasBody ? feishuImageUrls(article.blocks) : []
       if (urls.length) article.imageImport = { error: '图片转存中断，可以重试。', remaining: urls.length }
       await store.update(state => {
+        if (state.lastLayoutPreferences) article.layoutPreferences = { ...state.lastLayoutPreferences }
         state.articles.push(article)
         state.currentId = article.id
       })
@@ -331,8 +355,36 @@ export async function route(deps, req, res) {
       else await store.update(() => { article.imageImport = null })
       return ok()
     }
+    case 'articles/view': {
+      if (body.view !== 'paper' && body.view !== 'layout') {
+        return json(res, 400, { error: '请选择有效的稿件页面。' })
+      }
+      await store.update(state => { mustFind(state, body.id).lastView = body.view })
+      return ok()
+    }
+    case 'articles/archive':
+    case 'articles/restore': {
+      await store.update(state => {
+        const article = mustFind(state, body.id)
+        if (path === 'articles/restore') {
+          delete article.archivedAt
+          return
+        }
+        notBusy(pipeline, article.id)
+        if (coverJobMap(store).has(article.id) || imageJobMap(store).has(article.id)) {
+          throw Object.assign(new Error('请等封面生成或图片转存完成后再归档。'), { status: 409 })
+        }
+        article.archivedAt ??= new Date().toISOString()
+        if (state.currentId === article.id) state.currentId = null
+      })
+      return ok()
+    }
     case 'articles/select':
-      await store.update(state => { state.currentId = mustFind(state, body.id).id })
+      await store.update(state => {
+        const article = mustFind(state, body.id)
+        if (article.archivedAt) throw Object.assign(new Error('请先恢复这篇稿件。'), { status: 409 })
+        state.currentId = article.id
+      })
       return ok()
     case 'articles/delete': {
       notBusy(pipeline, body.id)
@@ -340,7 +392,7 @@ export async function route(deps, req, res) {
       await store.update(state => {
         const article = mustFind(state, body.id)
         state.articles = state.articles.filter(a => a.id !== article.id)
-        if (state.currentId === article.id) state.currentId = state.articles.at(-1)?.id ?? null
+        if (state.currentId === article.id) state.currentId = state.articles.findLast(a => !a.archivedAt)?.id ?? null
       })
       return ok()
     }
@@ -377,18 +429,35 @@ export async function route(deps, req, res) {
         const article = mustFind(state, body.id)
         notBusy(pipeline, article.id)
         const block = mustBlock(article, body.blockId)
+        if (typeof body.expectedText === 'string' && block.text !== body.expectedText) {
+          throw Object.assign(new Error('这一段已有新版本，未保存的编辑已保留。'), { status: 409 })
+        }
         const value = String(body.text ?? '').replace(/\r\n?/g, '\n').trim().slice(0, 20000)
         if (value === block.text) return
         snapshot(article, '手动改稿')
         if (!value) article.blocks = article.blocks.filter(b => b !== block)
         else {
-          block.text = value
+          const [first, ...rest] = splitMarkdown(value, { bodyOnly: true }).blocks
+          block.text = first
+          if (rest.length) article.blocks.splice(article.blocks.indexOf(block) + 1, 0,
+            ...rest.map(text => ({ id: newId(), text, check: null })))
           // 自己动手改过的段落，旧的检测结论不再作数
           block.check = null
         }
         touch(article)
       })
       return ok()
+    case 'layout/preferences': {
+      if (!STYLES.includes(body.style) || !THEMES.includes(body.theme)) {
+        return json(res, 400, { error: '请选择有效的正文风格和配色。' })
+      }
+      await store.update(state => {
+        const article = mustFind(state, body.id)
+        article.layoutPreferences = { style: body.style, theme: body.theme }
+        state.lastLayoutPreferences = { ...article.layoutPreferences }
+      })
+      return ok()
+    }
     case 'layout/follow-card': {
       if (typeof body.enabled !== 'boolean') return json(res, 400, { error: '请指定是否显示文末关注卡。' })
       await store.update(state => { mustFind(state, body.id).followCard = body.enabled })
@@ -432,6 +501,23 @@ export async function route(deps, req, res) {
         const article = mustFind(state, body.id)
         const block = mustBlock(article, body.blockId)
         block.check = { ...(block.check ?? {}), status: 'kept' }
+        touch(article)
+      })
+      return ok()
+    case 'block/restore-revision':
+      await store.update(state => {
+        const article = mustFind(state, body.id)
+        notBusy(pipeline, article.id)
+        const block = mustBlock(article, body.blockId)
+        const previous = article.history.findLast(entry => entry.blocks.some(item => item.id === block.id && item.text !== block.text))
+          ?.blocks.find(item => item.id === block.id)?.text ?? block.prev
+        if (block.text !== body.expectedText || previous !== body.previousText || previous == null || previous === block.text) {
+          throw Object.assign(new Error('这段文字或对比版本已变化，请关闭后重新打开对比。'), { status: 409 })
+        }
+        snapshot(article, '恢复段落上一版')
+        block.text = previous
+        block.prev = null
+        block.check = null
         touch(article)
       })
       return ok()

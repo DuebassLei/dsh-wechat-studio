@@ -40,6 +40,10 @@ async function request(path, options) {
 
 const bodyKey = (current, brand) => (current ? [current.id, current.title, current.banner?.style, current.banner?.at, current.followCard, brand?.author, brand?.slogan, ...current.blocks.map(b => b.text)].join('\u0001') : '')
 
+export function loadRevisions(id, signal) {
+  return request(`revisions?${new URLSearchParams({ id })}`, { signal })
+}
+
 function accept(data) {
   const current = data.current
   // 正文变了，之前排好的版式就过期了
@@ -70,6 +74,26 @@ export async function act(path, body = {}, { quiet = false } = {}) {
     return false
   } finally {
     setState({ pending: null })
+  }
+}
+
+let viewWrite = Promise.resolve()
+
+export function rememberArticleView(id, view) {
+  viewWrite = viewWrite.then(() => saveArticleView(id, view))
+  return viewWrite
+}
+
+async function saveArticleView(id, view) {
+  try {
+    await request('articles/view', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id, view }),
+    })
+    setState(s => s.data ? { data: { ...s.data, articles: s.data.articles.map(item =>
+      item.id === id ? { ...item, lastView: view } : item) } } : {})
+  } catch (err) {
+    toast(err.message, true)
   }
 }
 

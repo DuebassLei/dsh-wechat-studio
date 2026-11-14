@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { cleanMarkdown, extractJson, listModels, loadSkill, modelInfo, setModelOverride } from '../src/ai.js'
-import { applyOps, blockKind, createArticle, fixGroups, fixPlan, isCheckable, snapshot, splitMarkdown, toMarkdown, undo } from '../src/article.js'
+import { applyOps, blockKind, createArticle, fixGroups, fixPlan, isCheckable, revisionChanges, snapshot, splitMarkdown, toMarkdown, undo } from '../src/article.js'
 import { checkBanner, detectionText, renderLayout } from '../src/layout.js'
 import { bannerGuide, normalizeSpec } from '../src/banner.js'
 import { markBlocks, pdfToText } from '../src/report.js'
@@ -35,6 +35,27 @@ echo two
 - 列表一
 - 列表二
 `
+
+test('改稿对比：对齐增删后的段落，按次显示标题和正文，撤销后移除该次改动', () => {
+  const article = createArticle({ markdown: '# 旧标题\n\n原段落\n\n删掉我\n\n保留段落' })
+  snapshot(article, '改正文')
+  applyOps(article, [
+    { op: 'insert_after', block: 0, text: '新开头' },
+    { op: 'rewrite', block: 1, text: '改后段落' },
+    { op: 'delete', block: 2 },
+  ])
+  snapshot(article, '换标题')
+  article.title = '新标题'
+  const [latest, earlier] = revisionChanges(article)
+  assert.deepEqual(latest.rows, [{ kind: 'title', before: { text: '旧标题' }, after: { text: '新标题' } }])
+  assert.deepEqual(earlier.rows, [
+    { kind: 'insert', before: null, after: { text: '新开头', number: 1 } },
+    { kind: 'rewrite', before: { text: '原段落', number: 1 }, after: { text: '改后段落', number: 2 } },
+    { kind: 'delete', before: { text: '删掉我', number: 2 }, after: null },
+  ])
+  undo(article)
+  assert.deepEqual(revisionChanges(article), [earlier])
+})
 
 test('切分：front matter、标题单独取出，代码块里的空行不切', () => {
   const { front, title, blocks } = splitMarkdown(MD)
@@ -477,4 +498,38 @@ test('飞书 Markdown 导入：先打开稿面，后台上传去重，预览更�
   reject = false
   await request('images/retry', { id: failed.current.id })
   assert.equal((await waitForImport()).imageImport, null)
+})
+
+test('归档当前稿件后可跨重启恢复，正文和续写状态保留', async () => {
+  const { route } = await import('../src/host.js')
+  const store = new Store(mkdtempSync(join(tmpdir(), 'ws-archive-')))
+  const article = createArticle({ markdown: MD })
+  article.lastView = 'layout'
+  await store.update(state => {
+    state.articles.push(article)
+    state.currentId = article.id
+  })
+  const updatedAt = article.updatedAt
+  const deps = { ctx: { get: () => null }, store, pipeline: { job: () => null } }
+  async function request(path, post = false) {
+    const req = { url: '/wechat-studio/' + path, method: post ? 'POST' : 'GET',
+      async *[Symbol.asyncIterator]() { yield Buffer.from(JSON.stringify({ id: article.id })) } }
+    let result
+    await route(deps, req, { setHeader() {}, end(value) { result = JSON.parse(value) } })
+    return result
+  }
+
+  await request('articles/archive', true)
+  deps.store = new Store(store.root)
+  const archived = await request('state')
+  assert.equal(archived.current, null)
+  assert.ok(archived.articles[0].archivedAt)
+  await assert.rejects(request('articles/select', true), { status: 409 })
+  await request('articles/restore', true)
+  const restored = await request('articles/select', true)
+  assert.equal(restored.current.id, article.id)
+  assert.equal(restored.articles[0].archivedAt, null)
+  assert.equal(restored.articles[0].lastView, 'layout')
+  assert.equal(restored.articles[0].updatedAt, updatedAt)
+  assert.equal(toMarkdown((await deps.store.read()).articles[0]).trim(), MD.trim())
 })

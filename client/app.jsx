@@ -1,4 +1,4 @@
-import { plainOf, splitMarkdown } from '../src/article.js'
+import { blockKind, plainOf, splitMarkdown } from '../src/article.js'
 import { countMarkdownImages, feishuImageUrls } from '../src/markdown-images.js'
 import magentaPreview from './assets/cover-styles/magenta.webp'
 import { COVER_MODELS, COVER_RESOLUTIONS, COVER_FORMATS, MAX_COVER_COUNT } from '../src/cover-options.js'
@@ -10,7 +10,8 @@ import grungePreview from './assets/cover-styles/grunge.webp'
 import { COVER_STYLES } from '../src/cover-styles.js'
 // 稿面：左边对话改稿，中间是稿子和纸边批注，右边是标题、朱雀质检和导出。
 import React from 'react'
-import { act, copyDetectionText, copyMarkdown, copyText, loadLayout, loadModels, loadSettings, loadSkills, saveSettings, setState, testZhuque, toast, uploadReport, useStudio } from './state.js'
+import { cardMarkdown, emphasisFormats, formatSelection, insertFormats } from './editor-format.js'
+import { act, copyDetectionText, copyMarkdown, copyText, getState, loadLayout, loadModels, loadRevisions, loadSettings, loadSkills, rememberArticleView, saveSettings, setState, testZhuque, toast, uploadReport, useStudio } from './state.js'
 
 const ICONS = {
   check: 'M3 8.5l3.2 3.2L13 5',
@@ -38,7 +39,7 @@ export function Icon({ name, size = 16 }) {
 /** 行内 Markdown：加粗、色块强调、行内代码，以及 [可补：…] [截图：…] 这类待办占位。 */
 function inline(text) {
   const parts = []
-  const pattern = /(\*\*[^*\n]+\*\*|==[^=\n]+==|`[^`\n]+`|\[(?:可补|截图|可选)[：:][^\]\n]*\])/g
+  const pattern = /(\*\*[^*\n]+\*\*|==[^=\n]+==|\+\+[^+\n]+\+\+|`[^`\n]+`|\[(?:可补|截图|可选)[：:][^\]\n]*\])/g
   let last = 0
   let match
   while ((match = pattern.exec(text))) {
@@ -47,6 +48,7 @@ function inline(text) {
     const key = parts.length
     if (token.startsWith('**')) parts.push(<strong key={key}>{token.slice(2, -2)}</strong>)
     else if (token.startsWith('==')) parts.push(<mark key={key}>{token.slice(2, -2)}</mark>)
+    else if (token.startsWith('++')) parts.push(<u key={key}>{token.slice(2, -2)}</u>)
     else if (token.startsWith('`')) parts.push(<code key={key}>{token.slice(1, -1)}</code>)
     else parts.push(<span key={key} className="ws-todo">{token}</span>)
     last = match.index + token.length
@@ -55,69 +57,396 @@ function inline(text) {
   return parts
 }
 
-function BlockBody({ block }) {
+function PaperImage({ src, caption, long }) {
+  const [failed, setFailed] = React.useState(false)
+  const description = caption && !/^image$/i.test(caption.trim()) ? caption : ''
+  let usable = false
+  try {
+    const url = new URL(src)
+    usable = ['https:', 'http:'].includes(url.protocol) && !url.username && !url.password
+  } catch {
+    // A local path or unfilled template has no browser-accessible source.
+  }
+  if (!usable || failed) {
+    return <div className="ws-media">
+      <span className="ws-tag">{long ? '长图卡' : '图片'}</span> {description || (failed ? '图片加载失败' : '图片地址不可预览')}
+      {description ? <span className="ws-media-hint">{failed ? '图片加载失败' : '图片地址不可预览'}</span> : null}
+    </div>
+  }
+  return <div className={`ws-paper-image${long ? ' is-long' : ''}`}>
+    <img src={src} alt={description || (long ? '正文长图' : '正文图片')} loading="lazy" decoding="async"
+      referrerPolicy="no-referrer" onError={() => setFailed(true)} />
+    {description ? <span className="ws-paper-caption">{description}</span> : null}
+  </div>
+}
+
+function BlockBody({ block, sectionNumber }) {
   const { kind, text } = block
   if (kind === 'heading') {
     const level = /^#+/.exec(text)[0].length
-    return <div className={`ws-h ws-h${Math.min(level, 3)}`}>{inline(text.replace(/^#+\s+/, ''))}</div>
+    const heading = text.replace(/^#+\s+/, '')
+    if (level === 2 && sectionNumber) {
+      const number = String(sectionNumber).padStart(2, '0')
+      const [title, ...subtitle] = heading.split('|')
+      return <div className="ws-h ws-h2 ws-neo-heading">
+        <span className="ws-neo-heading-meta" aria-hidden="true"><b>{number}</b> {subtitle.join('|').trim() || `PART ${number}`}</span>
+        <span>{inline(title.trim().replace(/^(?:\d+[、.．]|\d+\s+|PART\s*\d+\s*[:：]?)\s*/i, '') || title)}</span>
+      </div>
+    }
+    return <div className={`ws-h ws-h${Math.min(level, 3)}`}>{inline(heading)}</div>
+  }
+  if (kind === 'code') {
+    const lines = text.split('\n')
+    const info = /^\s*(?:`{3,}|~{3,})\s*(bash|text|promptbox|prompt)(?:\s+(.*))?\s*$/.exec(lines[0])
+    if (info && lines.length > 1 && /^\s*(?:`{3,}|~{3,})\s*$/.test(lines.at(-1))) {
+      const [, lang, title] = info
+      return <div className={`ws-code-card is-${lang}`}>
+        <span className="ws-tag">{lang === 'prompt' ? 'PROMPT' : lang === 'promptbox' ? '长提示词' : '终端'}</span>
+        {title ? <span> {title}</span> : null}
+        <pre className="ws-pre">{lines.slice(1, -1).join('\n')}</pre>
+      </div>
+    }
   }
   if (kind === 'code' || kind === 'table') return <pre className="ws-pre">{text}</pre>
   if (kind === 'quote') {
     const tag = /^\s*>\s?\[!([A-Z]+)\]/.exec(text)?.[1]
     const names = { QUOTE: '金句', TIP: '小技巧', NOTE: '说明', WARN: '注意', TLDR: '省流版' }
     return (
-      <blockquote className="ws-quote">
+      <blockquote className={`ws-quote${tag === 'QUOTE' ? ' is-golden' : tag ? ' is-callout' : ''}`}>
         {tag ? <span className="ws-tag">{names[tag] ?? tag}</span> : null}
         {text.split('\n').map((line, i) => <div key={i}>{inline(line.replace(/^\s*>\s?(\[![A-Z]+\]\s*)?/, ''))}</div>)}
       </blockquote>
     )
   }
   if (kind === 'list') return <div className="ws-list">{text.split('\n').map((line, i) => <div key={i}>{inline(line)}</div>)}</div>
-  if (kind === 'media') return <div className="ws-media">{text}</div>
+  if (kind === 'media') {
+    const image = /^!\[([^\]]*)\]\(<?([^\s>)]+)>?(?:\s+"([^"]*)")?\)\s*$/.exec(text)
+    if (image) return <PaperImage key={image[2]} src={image[2]} caption={image[1]} long={image[3]?.toLowerCase() === 'long'} />
+    return <div className="ws-media">{text}</div>
+  }
   if (kind === 'rule') return <hr className="ws-rule" />
   return <p className="ws-p">{text.split('\n').map((line, i) => <React.Fragment key={i}>{i ? <br /> : null}{inline(line)}</React.Fragment>)}</p>
 }
 
-function Editor({ block, onDone }) {
-  const [value, setValue] = React.useState(block.text)
+// Keep unfinished edits separate from the saved article.
+const paragraphDrafts = new Map()
+
+function draftsFor(articleId) {
+  if (!paragraphDrafts.has(articleId)) {
+    let entries = []
+    try {
+      const stored = JSON.parse(localStorage.getItem(`wechat-studio:paragraph-drafts:v1:${articleId}`) ?? '[]')
+      if (Array.isArray(stored)) entries = stored.filter(entry =>
+        Array.isArray(entry) && typeof entry[0] === 'string' &&
+        typeof entry[1]?.text === 'string' && typeof entry[1]?.original === 'string')
+    } catch {
+      // Editing remains available if local storage is unavailable.
+    }
+    paragraphDrafts.set(articleId, new Map(entries))
+  }
+  return paragraphDrafts.get(articleId)
+}
+
+function trackParagraphDraft(articleId, id, draft) {
+  const drafts = draftsFor(articleId)
+  const hadDraft = drafts.has(id)
+  if (draft) drafts.set(id, draft)
+  else drafts.delete(id)
+  if (!draft && !hadDraft) return
+  const key = `wechat-studio:paragraph-drafts:v1:${articleId}`
+  try {
+    if (drafts.size) localStorage.setItem(key, JSON.stringify([...drafts]))
+    else localStorage.removeItem(key)
+    if (getState().draftStorageFailed) setState({ draftStorageFailed: false })
+  } catch {
+    if (!getState().draftStorageFailed) setState({ draftStorageFailed: true })
+  }
+  if (hadDraft !== Boolean(draft)) setState(s => ({ draftVersion: (s.draftVersion ?? 0) + 1 }))
+}
+
+function openParagraph(articleId, blockId) {
+  setState({ editing: blockId })
+  try { localStorage.setItem(`wechat-studio:last-paragraph:${articleId}`, blockId) } catch {}
+  requestAnimationFrame(() => document.getElementById(`ws-review-${articleId}-${blockId}`)?.scrollIntoView({ block: 'nearest' }))
+}
+
+function lastParagraph(articleId) {
+  try { return localStorage.getItem(`wechat-studio:last-paragraph:${articleId}`) } catch { return null }
+}
+
+function PaperNavigation({ article, target, onJump }) {
+  const editing = useStudio(s => s.editing)
+  const pending = useStudio(s => s.pending)
+  const details = React.useRef(null)
+  const lastId = lastParagraph(article.id)
+  const blocks = article.blocks.map((block, index) => ({ ...block, number: index + 1 }))
+  const headings = blocks.filter(block => block.kind === 'heading')
+  const waiting = blocks.filter(block => block.check?.status === 'flag')
+  const position = blocks.findIndex(block => block.id === (target ?? editing ?? lastId)) + 1
+  const resume = blocks.find(block => block.id === lastId)
+  const next = waiting.find(block => block.number > position) ?? waiting[0]
+  React.useEffect(() => {
+    const dismiss = event => {
+      if (details.current?.open && !details.current.contains(event.target)) details.current.open = false
+    }
+    document.addEventListener('pointerdown', dismiss)
+    return () => document.removeEventListener('pointerdown', dismiss)
+  }, [])
+  return <div className="ws-paper-nav">
+    <details ref={details} className="ws-unsaved-menu" onKeyDown={event => {
+      if (event.key === 'Escape') {
+        details.current.open = false
+        details.current.querySelector('summary')?.focus()
+      }
+    }}>
+      <summary className="ws-btn">正文目录</summary>
+      <nav className="ws-unsaved-list" aria-label="正文小标题">
+        {headings.length ? headings.map(block => <button type="button" key={block.id} onClick={() => {
+          details.current.open = false
+          onJump(block.id, true)
+        }}><b>{block.number}</b><span>{plainOf(block.text)}</span></button>) : <p className="ws-muted ws-small">这篇文章还没有小标题。</p>}
+      </nav>
+    </details>
+    {next ? <button type="button" className="ws-btn" onClick={() => onJump(next.id, true)}>下一处待处理 <span className="ws-muted">· {waiting.length}</span></button> : null}
+    {resume ? <button type="button" className="ws-btn" disabled={Boolean(article.job || pending)} onClick={() => {
+      onJump(resume.id)
+      openParagraph(article.id, resume.id)
+    }}>接着改第 {resume.number} 段</button> : null}
+  </div>
+}
+
+function UnsavedParagraphs({ article }) {
+  useStudio(s => s.draftVersion)
+  const storageFailed = useStudio(s => s.draftStorageFailed)
+  const pending = useStudio(s => s.pending)
+  const [open, setOpen] = React.useState(false)
+  const root = React.useRef(null)
+  const stored = draftsFor(article.id)
+  const drafts = article.blocks.flatMap((block, index) => stored.has(block.id) ? [{ block, number: index + 1 }] : [])
+  React.useEffect(() => {
+    if (!open) return
+    const dismiss = event => { if (!root.current?.contains(event.target)) setOpen(false) }
+    document.addEventListener('pointerdown', dismiss)
+    return () => document.removeEventListener('pointerdown', dismiss)
+  }, [open])
+  if (!drafts.length) return null
+  return <div ref={root} className="ws-unsaved-menu" onKeyDown={event => {
+    if (open && event.key === 'Escape') {
+      setOpen(false)
+      root.current?.querySelector('button')?.focus()
+    }
+  }}>
+    <button type="button" className="ws-btn" aria-expanded={open} disabled={Boolean(article.job || pending)} onClick={() => setOpen(!open)}
+      title={storageFailed ? '本地暂存失败，退出前请保存正文' : '未保存修改已在本机暂存'}>
+      {drafts.length} 段未保存
+    </button>
+    {open ? <div className="ws-unsaved-list" aria-label="未保存段落">
+      {drafts.map(({ block, number }) => <button key={block.id} type="button" disabled={Boolean(article.job || pending)} onClick={() => {
+        setOpen(false)
+        if (getState().view !== 'paper') openArticleView(article, 'paper')
+        openParagraph(article.id, block.id)
+      }}><b>第 {number} 段</b> <span>{plainOf(stored.get(block.id).text) || '已清空'}</span></button>)}
+    </div> : null}
+  </div>
+}
+
+function CardInsert({ card, onInsert, onClose }) {
   const ref = React.useRef(null)
+  const heading = React.useId()
+  const image = card.id === 'image' || card.id === 'long'
+  const selectedUrl = image && /^https?:\/\/\S+$/i.test(card.selection)
+  const [title, setTitle] = React.useState(image && !selectedUrl ? card.selection.replace(/\s+/g, ' ') : '')
+  const [value, setValue] = React.useState(!image || selectedUrl ? card.selection : '')
+  const [error, setError] = React.useState('')
+  React.useEffect(() => {
+    const dialog = ref.current
+    dialog.showModal()
+    return () => { if (dialog.open) dialog.close() }
+  }, [])
+  const label = insertFormats.flatMap(group => group.items).find(([id]) => id === card.id)?.[1]
+  return <dialog ref={ref} className="ws-dialog ws-card-insert" aria-labelledby={heading}
+    onCancel={e => { e.preventDefault(); onClose() }} onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+    <form onSubmit={e => {
+      e.preventDefault()
+      try { onInsert(cardMarkdown(card.id, title, value)) } catch (err) { setError(err.message) }
+    }}>
+      <div className="ws-dialog-head"><h2 id={heading} className="ws-dialog-title">插入{label}</h2>
+        <button type="button" className="ws-icon-btn" aria-label="关闭" onClick={onClose}><Icon name="close" /></button>
+      </div>
+      {image ? <label>图片地址<input value={value} onChange={e => setValue(e.target.value)} placeholder="https://…" required /></label> : null}
+      <label>{image ? '图注（选填）' : card.id === 'prompt' ? '文件名（选填）' : '标题（选填）'}
+        <input value={title} onChange={e => setTitle(e.target.value)} maxLength={120}
+          placeholder={image ? '描述这张图' : card.id === 'prompt' ? '提示词.txt' : '提示词'} />
+      </label>
+      {!image ? <label>提示词内容<textarea value={value} onChange={e => setValue(e.target.value)} rows={6} required /></label> : null}
+      {error ? <p className="ws-warn" role="alert">{error}</p> : null}
+      <div className="ws-dialog-foot">
+        <button type="button" className="ws-btn" onClick={onClose}>取消</button>
+        <button type="submit" className="ws-btn is-primary">插入卡片</button>
+      </div>
+    </form>
+  </dialog>
+}
+
+function Editor({ articleId, block, number, sectionNumber, busy, nextId, onDone }) {
+  const [draft, setDraft] = React.useState(() => draftsFor(articleId).get(block.id) ?? { text: block.text, original: block.text })
+  const storageFailed = useStudio(s => s.draftStorageFailed)
+  const [preview, setPreview] = React.useState(false)
+  const [saving, setSaving] = React.useState(false)
+  const [card, setCard] = React.useState(null)
+  const ref = React.useRef(null)
+  const menu = React.useRef(null)
+  const lock = React.useRef(false)
+  const changed = draft.text.trim() !== draft.original
+  const conflict = block.text !== draft.original
+  const empty = !draft.text.trim()
   React.useLayoutEffect(() => {
     const el = ref.current
-    el.style.height = 'auto'
-    el.style.height = `${el.scrollHeight + 2}px`
-  }, [value])
-  React.useEffect(() => { ref.current.focus() }, [])
-  const save = async () => {
-    if (value.trim() !== block.text) await act('block/update', { blockId: block.id, text: value })
+    if (!el) return
+    const fit = () => {
+      el.style.height = '0px'
+      el.style.height = `${el.scrollHeight}px`
+    }
+    fit()
+    const observer = new ResizeObserver(entries => {
+      const width = entries[0].contentRect.width
+      if (width !== lastWidth) { lastWidth = width; fit() }
+    })
+    let lastWidth
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [draft.text, preview])
+  React.useEffect(() => {
+    if (!preview) ref.current?.focus({ preventScroll: true })
+  }, [preview])
+  const edit = text => {
+    const next = { ...draft, text }
+    trackParagraphDraft(articleId, block.id, text.trim() === draft.original ? null : next)
+    setDraft(next)
+  }
+  const cancel = () => {
+    if (lock.current) return
+    trackParagraphDraft(articleId, block.id, null)
     onDone()
   }
+  const save = async (remove = false, advance = false) => {
+    if (lock.current || busy || !changed || conflict || (empty && !remove)) return
+    lock.current = true
+    setSaving(true)
+    const ok = await act('block/update', { id: articleId, blockId: block.id, text: draft.text, expectedText: draft.original })
+    lock.current = false
+    if (ok) {
+      trackParagraphDraft(articleId, block.id, null)
+      onDone(advance ? nextId : null)
+    } else setSaving(false)
+  }
+  const format = id => {
+    const el = ref.current
+    if (!el) return
+    const { selectionStart: start, selectionEnd: end } = el
+    if (['image', 'long', 'prompt', 'promptbox'].includes(id)) {
+      if (menu.current) menu.current.open = false
+      setCard({ id, start, end, selection: draft.text.slice(start, end) })
+      return
+    }
+    applyFormat(formatSelection(draft.text, start, end, id))
+  }
+  const focusRange = (start, end) => {
+    requestAnimationFrame(() => {
+      ref.current?.focus({ preventScroll: true })
+      ref.current?.setSelectionRange(start, end)
+    })
+  }
+  const applyFormat = next => {
+    if (next.text.length > 20000) { toast('这一段最多可编辑 20000 个字符。', true); return }
+    if (menu.current) menu.current.open = false
+    edit(next.text)
+    focusRange(next.start, next.end)
+  }
+  React.useEffect(() => {
+    const dismiss = event => {
+      if (menu.current?.open && !menu.current.contains(event.target)) menu.current.open = false
+    }
+    document.addEventListener('pointerdown', dismiss)
+    return () => document.removeEventListener('pointerdown', dismiss)
+  }, [])
   return (
-    <textarea
-      ref={ref} className="ws-edit" value={value} aria-label="编辑这一段"
-      onChange={e => setValue(e.target.value)} onBlur={save}
-      onKeyDown={e => {
-        if (e.key === 'Escape') { e.preventDefault(); onDone() }
-        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); e.currentTarget.blur() }
-      }}
-    />
+    <div className="ws-editor" onKeyDown={event => {
+      if (card) return
+      if (event.nativeEvent.isComposing || event.keyCode === 229) return
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        if (menu.current?.open) { menu.current.open = false; ref.current?.focus() }
+        else cancel()
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+        event.preventDefault()
+        if (!event.shiftKey || nextId) void save(false, event.shiftKey)
+      }
+    }}>
+      <div className="ws-editor-tools">
+        <span>编辑第 {number} 段</span>
+        <div>
+          {!preview && !saving ? <>
+            <div className="ws-format-group" role="group" aria-label="文字强调">
+              {emphasisFormats.map(item => <button key={item.id} type="button" className={`ws-btn ws-format-${item.id}`}
+                title={item.label} aria-label={item.label} onMouseDown={e => e.preventDefault()} onClick={() => format(item.id)}>{item.symbol}</button>)}
+            </div>
+            <details className="ws-format-insert" ref={menu}>
+              <summary className="ws-btn">插入</summary>
+              <div className="ws-format-panel">
+                {insertFormats.map(group => <div className="ws-format-section" key={group.label} role="group" aria-label={group.label}>
+                  <span>{group.label}</span>
+                  {group.items.map(([id, label]) => <button type="button" key={id} onClick={() => format(id)}>{label}</button>)}
+                </div>)}
+              </div>
+            </details>
+          </> : null}
+          <button type="button" className="ws-btn" aria-pressed={preview} disabled={saving} onClick={() => setPreview(!preview)}>{preview ? '继续编辑' : '预览'}</button>
+        </div>
+      </div>
+      {preview ? <div className="ws-editor-preview">{splitMarkdown(draft.text, { bodyOnly: true }).blocks.map((text, index) =>
+        <BlockBody key={index} sectionNumber={sectionNumber} block={{ kind: blockKind(text), text }} />)}</div> : (
+        <textarea ref={ref} className="ws-edit" value={draft.text} aria-label={`编辑第 ${number} 段`} readOnly={saving}
+          maxLength={20000} onChange={event => edit(event.target.value)} />
+      )}
+      <div className="ws-editor-footer">
+        <span role="status">{saving ? '正在保存…' : storageFailed ? '本地暂存失败，退出前请保存正文' : conflict ? '正文已有新版本，当前修改仍保留。' : empty ? '清空后可手动删除这段' : changed ? '已在本机暂存，尚未写入正文' : '⌘ / Ctrl + Enter 保存'}</span>
+        <div>
+          {conflict ? <button type="button" className="ws-btn" onClick={() => copyText(draft.text, '已复制未保存的修改')}>复制修改</button> : null}
+          <button type="button" className="ws-btn" disabled={saving} onClick={cancel}>取消</button>
+          {nextId && !empty ? <button type="button" className="ws-btn" title="⌘ / Ctrl + Shift + Enter" disabled={saving || busy || !changed || conflict}
+            onClick={() => void save(false, true)}>保存并改下一段</button> : null}
+          <button type="button" className="ws-btn is-primary" disabled={saving || busy || !changed || conflict} onClick={() => void save(empty)}>{empty ? '删除段落' : '保存'}</button>
+        </div>
+      </div>
+      {card ? <CardInsert card={card} onClose={() => { setCard(null); focusRange(card.start, card.end) }}
+        onInsert={markdown => {
+          const next = formatSelection(draft.text, card.start, card.end, card.id, markdown)
+          if (next.text.length > 20000) throw new Error('插入后会超过这一段的 20000 字符上限。')
+          setCard(null)
+          applyFormat(next)
+        }} /> : null}
+    </div>
   )
 }
 
 function Annotation({ block, job }) {
   const check = block.check
+  const compare = block.previousText != null ? <button type="button" className="ws-btn" onClick={() => setState({ dialog: 'block-revision', revisionBlockId: block.id })}>看改动</button> : null
   if ((job?.kind === 'fix' && job.target === block.id) || (job?.kind === 'fixall' && job.targets.includes(block.id))) return <div className="ws-note is-busy"><span className="ws-shimmer">正在改写这一段…</span></div>
-  if (!check) return null
-  if (check.status === 'pass') return <div className="ws-mark is-pass"><Icon name="check" size={14} />已通过</div>
-  if (check.status === 'kept') return <div className="ws-mark">保留原样</div>
+  if (!check) return compare ? <div className="ws-note-actions">{compare}</div> : null
+  if (check.status === 'pass') return <div className="ws-mark is-pass"><Icon name="check" size={14} />已通过 {compare}</div>
+  if (check.status === 'kept') return <div className="ws-mark">保留原样 {compare}</div>
   if (check.status === 'fixed') {
     return (
       <div className="ws-note">
         <p className="ws-note-title">已改写，等下一轮检测</p>
-        {block.hasPrev ? <div className="ws-note-actions"><button type="button" className="ws-btn" onClick={() => act('block/revert', { blockId: block.id })}>退回上一版</button></div> : null}
+        {compare || block.hasPrev ? <div className="ws-note-actions">{compare}{block.hasPrev ? <button type="button" className="ws-btn" onClick={() => act('block/revert', { blockId: block.id })}>退回上一版</button> : null}</div> : null}
       </div>
     )
   }
-  if (check.status !== 'flag') return null
+  if (check.status !== 'flag') return compare
   const label = check.level === 'ai' ? 'AI 特征' : '疑似 AI'
   return (
     <div className="ws-note is-flag">
@@ -126,6 +455,7 @@ function Annotation({ block, job }) {
         : check.fixes >= 2 ? <p className="ws-note-text">这一段已经改过两轮。建议你用自己平时说话的方式重说一遍，点正文就能直接改。</p>
         : check.source !== 'api' && check.score < 0.6 ? <p className="ws-note-text">0.5–0.6 是噪声带，每次重测都会浮动，可以不改。</p> : null}
       <div className="ws-note-actions">
+        {compare}
         {check.worse && block.hasPrev ? <button type="button" className="ws-btn is-primary" onClick={() => act('block/revert', { blockId: block.id })}>退回上一版</button>
           : <button type="button" className="ws-btn is-primary" disabled={Boolean(job)} onClick={() => act('block/fix', { blockId: block.id })}>改这段</button>}
         <button type="button" className="ws-btn" onClick={() => act('block/keep', { blockId: block.id })}>保留</button>
@@ -137,6 +467,7 @@ function Annotation({ block, job }) {
 function Paper({ article, reviewTarget }) {
   const editing = useStudio(s => s.editing)
   const job = article.job
+  const pending = useStudio(s => s.pending)
   if (job?.kind === 'draft') {
     return (
       <div className="ws-sheet-wrap">
@@ -147,21 +478,38 @@ function Paper({ article, reviewTarget }) {
   if (!article.blocks.length) {
     return <div className="ws-sheet-wrap"><div className="ws-row"><div className="ws-sheet is-first is-last"><p className="ws-muted">这篇文章还没有正文。在左边说一句想写什么，或者新建一篇把写好的文章贴进来。</p></div><div className="ws-margin" /></div></div>
   }
+  let sectionNumber = 0
   return (
-    <div className="ws-sheet-wrap">
+    <div className="ws-sheet-wrap is-neo">
       <div className="ws-row">
         <div className="ws-sheet is-first"><h1 className="ws-title">{article.title || '还没有标题'}</h1></div>
         <div className="ws-margin" />
       </div>
       {article.blocks.map((block, index) => {
+        const headingNumber = block.kind === 'heading' && /^##\s/.test(block.text) ? ++sectionNumber : undefined
         const flagged = block.check?.status === 'flag'
         const last = index === article.blocks.length - 1
         return (
           <div className={`ws-row ${reviewTarget === block.id ? 'is-review-target' : ''}`} id={`ws-review-${article.id}-${block.id}`} key={block.id}>
             <div className={`ws-sheet ${flagged ? 'is-flag' : ''} ${last ? 'is-last' : ''}`}>
-              <span className="ws-no" aria-hidden="true">{index + 1}</span>
-              {editing === block.id ? <Editor block={block} onDone={() => setState({ editing: null })} />
-                : <button type="button" className="ws-block" disabled={Boolean(job)} title="点一下直接改这一段" onClick={() => setState({ editing: block.id })}><BlockBody block={block} /></button>}
+              {editing === block.id ? <span className="ws-no" aria-hidden="true">{index + 1}</span> :
+                <button type="button" className="ws-no ws-edge-edit" aria-label={`编辑第 ${index + 1} 段`} disabled={Boolean(job || pending)}
+                  onClick={() => openParagraph(article.id, block.id)}><span>{index + 1}</span><span aria-hidden="true">✎</span></button>}
+              {editing === block.id ? <Editor key={block.id} articleId={article.id} block={block} number={index + 1} sectionNumber={headingNumber} busy={Boolean(job || pending)}
+                nextId={article.blocks[index + 1]?.id} onDone={nextId => {
+                const state = getState()
+                if (state.editing !== block.id) return
+                if (nextId && state.data?.current?.blocks.some(item => item.id === nextId)) {
+                  openParagraph(article.id, nextId)
+                  return
+                }
+                setState({ editing: null })
+                requestAnimationFrame(() => document.getElementById(`ws-review-${article.id}-${block.id}`)?.querySelector('.ws-block')?.focus({ preventScroll: true }))
+              }} />
+                : <button type="button" className="ws-block" disabled={Boolean(job || pending)} title="点一下直接改这一段" onClick={() => openParagraph(article.id, block.id)}>
+                  <BlockBody block={block} sectionNumber={headingNumber} />
+                  {draftsFor(article.id).has(block.id) ? <span className="ws-unsaved">有未保存的修改</span> : null}
+                </button>}
             </div>
             <div className="ws-margin"><Annotation block={block} job={job} /></div>
           </div>
@@ -221,6 +569,7 @@ function LayoutView({ article }) {
           : banner.style === 'none' ? ''
           : banner.warnings.length ? `有 ${banner.warnings.length} 处字数提醒`
           : banner.ready ? '已生成' : '待生成',
+        layoutPreferences: article.layoutPreferences,
         followCard: article.followCard, followPending: pending === 'layout/follow-card',
       }, (path, body) => act(path, { ...body, id: article.id }))
     } catch {
@@ -558,6 +907,11 @@ function ReviewQueue({ article, target, onJump }) {
   )
 }
 
+function openArticleView(article, view) {
+  setState({ view, editing: null })
+  void rememberArticleView(article.id, view)
+}
+
 function SidePane({ article, flagged, ready, reviewTarget, onReviewJump }) {
   const fileRef = React.useRef(null)
   const [over, setOver] = React.useState(false)
@@ -621,7 +975,7 @@ function SidePane({ article, flagged, ready, reviewTarget, onReviewJump }) {
 
       <div className="ws-side-foot">
         {flagged ? <p className="ws-warn">还有 {flagged} 段没处理</p> : null}
-        <button type="button" className="ws-btn is-primary is-big" disabled={!article.blocks.length} onClick={() => setState({ view: 'layout' })}>去排版</button>
+        <button type="button" className="ws-btn is-primary is-big" disabled={!article.blocks.length} onClick={() => openArticleView(article, 'layout')}>去排版</button>
         <button type="button" className="ws-btn is-wide" disabled={!article.blocks.length} onClick={copyMarkdown}>复制 Markdown</button>
       </div>
     </aside>
@@ -641,6 +995,7 @@ function Switcher({ data }) {
   const current = data.current
   const terms = query.normalize('NFKC').trim().toLowerCase().split(/\s+/).filter(Boolean)
   const results = data.articles.filter(item => {
+    if (item.archivedAt) return false
     const title = item.title.normalize('NFKC').toLowerCase()
     return terms.every(term => title.includes(term))
   })
@@ -651,12 +1006,13 @@ function Switcher({ data }) {
     document.addEventListener('pointerdown', dismiss)
     return () => document.removeEventListener('pointerdown', dismiss)
   }, [open])
-  const pick = item => {
+  const pick = async item => {
     close()
     trigger.current?.focus()
     if (item.id === current?.id) return
-    setState({ view: 'paper', editing: null })
-    act('articles/select', { id: item.id })
+    if (await act('articles/select', { id: item.id })) {
+      setState({ view: item.lastView === 'layout' ? 'layout' : 'paper', editing: null })
+    }
   }
   return (
     <div className="ws-switch" ref={root} onKeyDown={event => {
@@ -1133,6 +1489,88 @@ function SkillsView() {
   )
 }
 
+const revisionKinds = { title: '标题', rewrite: '改写', insert: '新增', delete: '删除' }
+
+function RevisionDialog({ article, blockId }) {
+  const pending = useStudio(s => s.pending)
+  const modal = React.useRef(null)
+  const [result, setResult] = React.useState(null)
+  const [selected, setSelected] = React.useState(null)
+  const headingId = React.useId()
+  const close = () => setState({ dialog: null })
+  React.useEffect(() => {
+    const dialog = modal.current
+    dialog.showModal()
+    return () => { if (dialog.open) dialog.close() }
+  }, [])
+  React.useEffect(() => {
+    if (blockId) return
+    const controller = new AbortController()
+    loadRevisions(article.id, controller.signal).then(data => {
+      if (!controller.signal.aborted) setResult(data)
+    }).catch(error => {
+      if (!controller.signal.aborted) setResult({ error: error.message })
+    })
+    return () => controller.abort()
+  }, [article.id, blockId])
+  const index = blockId ? article.blocks.findIndex(block => block.id === blockId) : -1
+  const block = article.blocks[index]
+  const restored = block?.lastChangeWasRestore
+  const revision = blockId ? block?.previousText != null ? { index, rows: [{
+    kind: 'rewrite', before: { text: block.previousText, number: index + 1 }, after: { text: block.text, number: index + 1 },
+  }] } : null : result?.revisions?.find(item => item.index === selected) ?? result?.revisions?.[0]
+  const renderCell = (entry, empty, side, kind) => (
+    <div className={`ws-revision-cell is-${side}${entry ? '' : ' is-empty'}`}>
+      <span className="ws-revision-cell-label">{blockId ? side === 'before' ? (restored ? '恢复前的版本' : '上一个版本') : '当前正文' : side === 'before' ? '改稿前' : '改稿后'}{entry?.number ? ` · 第 ${entry.number} 段` : kind === 'title' ? ' · 标题' : ''}</span>
+      {entry ? <p>{entry.text}</p> : <p className="ws-muted">{empty}</p>}
+    </div>
+  )
+  return (
+    <dialog ref={modal} className="ws-dialog ws-revision-dialog" aria-labelledby={headingId}
+      onCancel={event => { event.preventDefault(); close() }}
+      onClick={event => { if (event.target === event.currentTarget) close() }}>
+      <div className="ws-dialog-head">
+        <div><h2 id={headingId} className="ws-dialog-title">{block ? `第 ${index + 1} 段 · 看改动` : '改稿对比'}</h2><p className="ws-muted ws-small">{blockId ? (restored ? '这一段已恢复，右侧是当前正文。' : '对照上一个版本和当前正文') : '逐次查看标题和正文的改动'}</p></div>
+        <button type="button" className="ws-icon-btn" aria-label="关闭" onClick={close}><Icon name="close" /></button>
+      </div>
+      {revision ? (
+        <>
+          {!blockId ? <div className="ws-revision-tools">
+            <label>改稿记录
+              <select value={revision.index} onChange={event => setSelected(Number(event.target.value))}>
+                {result.revisions.map((item, i) => (
+                  <option key={item.index} value={item.index}>{i === 0 ? '最近一次 · ' : ''}{item.label} · {draftDate.format(new Date(item.at))}</option>
+                ))}
+              </select>
+            </label>
+            <span className="ws-muted ws-small">{revision.rows.length} 处改动</span>
+          </div> : null}
+          <div className="ws-revision-rows" key={revision.index} tabIndex={0} aria-label="改稿差异">
+            {revision.rows.map((row, i) => (
+              <section className={`ws-revision-row is-${row.kind}`} key={i}>
+                <div className="ws-revision-kind">{restored ? '已恢复' : revisionKinds[row.kind]}</div>
+                {renderCell(row.before, row.kind === 'title' ? '原来没有标题' : '原来没有这段', 'before', row.kind)}
+                {renderCell(row.after, row.kind === 'title' ? '标题已移除' : '这段已删除', 'after', row.kind)}
+              </section>
+            ))}
+          </div>
+          {blockId ? <div className="ws-revision-tools">
+            <span className="ws-muted ws-small">只恢复这一段，恢复后可以撤销。</span>
+            <button type="button" className="ws-btn is-primary" disabled={Boolean(pending || article.job || draftsFor(article.id).has(blockId))}
+              title={draftsFor(article.id).has(blockId) ? '请先保存或取消这一段的未保存修改' : undefined}
+              onClick={async () => {
+                if (await act('block/restore-revision', { id: article.id, blockId, expectedText: block.text, previousText: block.previousText })) {
+                  close()
+                  toast(restored ? '已切回恢复前的版本，可撤销' : '已恢复左侧版本，可撤销')
+                }
+              }}>{restored ? '切回恢复前的版本' : '恢复左侧版本'}</button>
+          </div> : null}
+        </>
+      ) : <p className="ws-revision-message ws-muted" role="status">{blockId ? '这一段已没有可对比的上一版。' : result?.error ? `加载失败：${result.error}` : result ? '还没有可对比的标题或正文改动。' : '正在读取改稿记录…'}</p>}
+    </dialog>
+  )
+}
+
 function PaperModule({ data }) {
   const view = useStudio(s => s.view)
   const chatOpen = useStudio(s => s.chatOpen)
@@ -1140,9 +1578,10 @@ function PaperModule({ data }) {
   const article = data.current
   if (!article) return <Empty model={data.model} />
   const reviewTarget = review?.articleId === article.id ? review.blockId : null
-  const jumpToReview = blockId => {
+  const jumpToReview = (blockId, focus = false) => {
     setReview({ articleId: article.id, blockId })
     const row = document.getElementById(`ws-review-${article.id}-${blockId}`)
+    if (focus) row?.querySelector('.ws-block, .ws-edit')?.focus({ preventScroll: true })
     row?.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
   }
   const flagged = article.blocks.filter(b => b.check?.status === 'flag').length
@@ -1152,11 +1591,14 @@ function PaperModule({ data }) {
       <header className="ws-top" data-window-drag="">
         <nav className="ws-crumb" aria-label="当前位置"><button type="button" className="ws-link" onClick={() => setState({ paperHome: true })}>稿面</button><span aria-hidden="true">/</span><Switcher data={data} /></nav>
         <Steps article={article} flagged={flagged} retest={retest} />
+        {view === 'paper' && article.blocks.length ? <PaperNavigation key={article.id} article={article} target={reviewTarget} onJump={jumpToReview} /> : null}
+        <UnsavedParagraphs key={article.id} article={article} />
         <span className="ws-grow" />
         <div className="ws-tabs" role="tablist" aria-label="视图">
-          <button type="button" role="tab" aria-selected={view === 'paper'} className={view === 'paper' ? 'is-on' : ''} onClick={() => setState({ view: 'paper' })}>稿面</button>
-          <button type="button" role="tab" aria-selected={view === 'layout'} className={view === 'layout' ? 'is-on' : ''} onClick={() => setState({ view: 'layout' })}>排版预览</button>
+          <button type="button" role="tab" aria-selected={view === 'paper'} className={view === 'paper' ? 'is-on' : ''} onClick={() => openArticleView(article, 'paper')}>稿面</button>
+          <button type="button" role="tab" aria-selected={view === 'layout'} className={view === 'layout' ? 'is-on' : ''} onClick={() => openArticleView(article, 'layout')}>排版预览</button>
         </div>
+        {article.canUndo ? <button type="button" className="ws-btn" disabled={Boolean(article.job)} onClick={() => setState({ dialog: 'revisions' })}>改稿对比</button> : null}
         {article.canUndo ? <button type="button" className="ws-icon-btn" aria-label="撤销上一步" title="撤销上一步" disabled={Boolean(article.job)} onClick={() => act('undo')}><Icon name="undo" /></button> : null}
         <button type="button" className="ws-icon-btn" aria-label={chatOpen ? '收起改稿对话' : '打开改稿对话'} aria-pressed={chatOpen} onClick={() => setState({ chatOpen: !chatOpen })}><Icon name="chat" /></button>
         <ModelButton data={data} />
@@ -1209,15 +1651,25 @@ function DraftArtwork({ draft }) {
 
 function DraftHome({ data }) {
   const [query, setQuery] = React.useState('')
+  const [showArchived, setShowArchived] = React.useState(false)
   const pending = useStudio(s => s.pending)
-  const drafts = data.articles
+  const active = data.articles.filter(item => !item.archivedAt)
+  const archived = data.articles.filter(item => item.archivedAt).sort((a, b) => b.archivedAt.localeCompare(a.archivedAt))
+  const drafts = showArchived ? archived : active
   const featured = drafts.find(item => item.id === data.current?.id) ?? drafts[0]
   const terms = query.normalize('NFKC').trim().toLowerCase().split(/\s+/).filter(Boolean)
   const matches = drafts.filter(draft => terms.every(term => draft.title.normalize('NFKC').toLowerCase().includes(term)))
   const open = async draft => {
     if (pending) return
     if (draft.id !== data.current?.id && !await act('articles/select', { id: draft.id })) return
-    setState({ paperHome: false, view: 'paper', editing: null })
+    setState({ paperHome: false, view: draft.lastView === 'layout' ? 'layout' : 'paper', editing: null })
+  }
+  const move = async draft => {
+    if (pending) return
+    const restore = Boolean(draft.archivedAt)
+    if (await act(restore ? 'articles/restore' : 'articles/archive', { id: draft.id })) {
+      toast(restore ? '已恢复到全部稿件' : '已归档，可在「已归档」中恢复')
+    }
   }
   const edited = draft => {
     const date = new Date(draft.updatedAt)
@@ -1226,39 +1678,53 @@ function DraftHome({ data }) {
   return (
     <main className="ws-draft-home">
       <header className="ws-draft-home-head">
-        <div><h1>稿面</h1><p className="ws-muted">{drafts.length} 篇稿件</p></div>
+        <div><h1>稿面</h1><p className="ws-muted">{active.length} 篇稿件 · {archived.length} 篇已归档</p></div>
         <div className="ws-draft-home-tools">
           <input type="search" aria-label="搜索稿件标题" placeholder="搜索稿件标题…" value={query} onChange={e => setQuery(e.target.value)} />
           <button type="button" className="ws-btn is-primary" onClick={() => setState({ dialog: 'new' })}><Icon name="plus" />新建文章</button>
         </div>
       </header>
-      {featured && !terms.length ? (
+      {!showArchived && featured && !terms.length ? (
         <section className="ws-draft-feature">
           <div className="ws-draft-feature-copy">
             <span className="ws-muted ws-small">{featured.id === data.current?.id ? '上次打开' : '最近编辑'}</span>
             <h2>{featured.title}</h2>
             <p className="ws-muted ws-small">{[edited(featured), `${featured.chars} 字`].filter(Boolean).join(' · ')}</p>
-            <button type="button" className="ws-btn is-primary" disabled={Boolean(pending)} onClick={() => open(featured)}>继续写作 <span aria-hidden="true">→</span></button>
+            <button type="button" className="ws-btn is-primary" disabled={Boolean(pending)} onClick={() => open(featured)}>{featured.lastView === 'layout' ? '继续排版' : '继续改稿'} <span aria-hidden="true">→</span></button>
           </div>
           <DraftArtwork key={featured.coverId || featured.id} draft={featured} />
         </section>
       ) : null}
-      <section className="ws-draft-shelf" aria-label="全部稿件">
-        <div className="ws-sec-head"><h2>{terms.length ? '搜索结果' : '全部稿件'}</h2><span className="ws-muted ws-small">{terms.length ? `${matches.length} 篇` : '按最近编辑排序'}</span></div>
+      <section className="ws-draft-shelf" aria-label={showArchived ? '已归档' : '全部稿件'}>
+        <div className="ws-sec-head">
+          <div className="ws-draft-filters" role="group" aria-label="稿件分类">
+            <button type="button" className="ws-btn" aria-pressed={!showArchived} onClick={() => setShowArchived(false)}>全部稿件</button>
+            <button type="button" className="ws-btn" aria-pressed={showArchived} onClick={() => setShowArchived(true)}>已归档 <span>{archived.length}</span></button>
+          </div>
+          <span className="ws-muted ws-small">{terms.length ? `找到 ${matches.length} 篇` : showArchived ? '按归档时间排序' : '按最近编辑排序'}</span>
+        </div>
         {matches.length ? (
           <div className="ws-draft-grid">
             {matches.map(draft => (
-              <button type="button" className="ws-draft-card" key={draft.id} disabled={Boolean(pending)} onClick={() => open(draft)}>
-                <DraftArtwork key={draft.coverId || draft.id} draft={draft} />
-                <div className="ws-draft-card-copy">
-                  <strong>{draft.title}</strong>
-                  <span className="ws-muted ws-small">{[edited(draft), `${draft.chars} 字`].filter(Boolean).join(' · ')}</span>
-                  {draft.review || draft.checked ? <span className="ws-draft-review">{draft.review ? `${draft.review} 段待检查` : '已质检'}</span> : null}
+              <article className="ws-draft-card" key={draft.id}>
+                <div className="ws-draft-card-main">
+                  <DraftArtwork key={draft.coverId || draft.id} draft={draft} />
+                  <div className="ws-draft-card-copy">
+                    {showArchived ? <strong>{draft.title}</strong> : (
+                      <button type="button" className="ws-draft-open" disabled={Boolean(pending)} onClick={() => open(draft)}>{draft.title}</button>
+                    )}
+                    <span className="ws-muted ws-small">{[edited(draft), `${draft.chars} 字`].filter(Boolean).join(' · ')}</span>
+                    {draft.review || draft.checked ? <span className="ws-draft-review">{draft.review ? `${draft.review} 段待检查` : '已质检'}</span> : null}
+                  </div>
                 </div>
-              </button>
+                <div className="ws-draft-card-actions">
+                  <button type="button" className="ws-btn" disabled={Boolean(pending)} onClick={() => move(draft)}
+                    aria-label={`${showArchived ? '恢复' : '归档'}：${draft.title}`}>{showArchived ? '恢复稿件' : '归档'}</button>
+                </div>
+              </article>
             ))}
           </div>
-        ) : <p className="ws-draft-home-empty ws-muted">{terms.length ? '没有找到匹配的稿件。' : '还没有稿件。点「新建文章」粘贴 Markdown 或开始写作。'}</p>}
+        ) : <p className="ws-draft-home-empty ws-muted">{terms.length ? '没有找到匹配的稿件。' : showArchived ? '还没有归档稿件。' : '还没有在写的稿件。可以新建文章，或从「已归档」恢复旧稿。'}</p>}
       </section>
     </main>
   )
@@ -1270,6 +1736,7 @@ export function Studio() {
   const module = useStudio(s => s.module)
   const paperHome = useStudio(s => s.paperHome)
   const dialog = useStudio(s => s.dialog)
+  const revisionBlockId = useStudio(s => s.revisionBlockId)
   const note = useStudio(s => s.toast)
   const item = MODULES.find(m => m.id === module) ?? MODULES[1]
   let content
@@ -1281,6 +1748,8 @@ export function Studio() {
     <>
       <Rail module={item.id} />
       <div className="ws-col">{content}</div>
+      {dialog === 'revisions' && data?.current ? <RevisionDialog key={data.current.id} article={data.current} /> : null}
+      {dialog === 'block-revision' && data?.current ? <RevisionDialog key={revisionBlockId} article={data.current} blockId={revisionBlockId} /> : null}
       {dialog === 'cover-history' && data?.current ? <CoverHistoryDialog key={data.current.id} article={data.current} /> : null}
       {dialog === 'cover' && data?.current ? <CoverStyleDialog key={data.current.id} article={data.current} /> : null}
       {dialog === 'new' ? <NewDialog /> : null}

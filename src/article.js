@@ -1,5 +1,10 @@
 // 文章模型：Markdown 按段切成块，所有修改都落到某一块上，改一段不会碰到别的段。
 let counter = 0
+
+// 标题钩子类型，来自 skills/headline.md 的四大钩子库。成稿选标题时记下，复盘按它比较。
+export const HOOKS = { A: '自我打脸', B: '反转', C: '被求助', D: '技术发现', other: '其他' }
+export const HOOK_IDS = Object.keys(HOOKS)
+
 export function newId(prefix = 'b') {
   counter += 1
   return `${prefix}_${Date.now().toString(36)}${counter.toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`
@@ -81,7 +86,7 @@ export function createArticle({ topic = '', material = '', markdown = '' } = {})
   return {
     id: newId('a'), createdAt: now, updatedAt: now,
     topic: String(topic).trim().slice(0, 400), material: String(material).slice(0, 60000),
-    front: parsed.front, title: parsed.title, titles: [], summary: '',
+    front: parsed.front, title: parsed.title, titles: [], summary: '', hook: null,
     blocks: parsed.blocks.map(text => ({ id: newId(), text, check: null })),
     chat: [], history: [], zhuque: { round: 0, lastAt: null },
   }
@@ -104,7 +109,7 @@ export function toMarkdown(article) {
 
 /** 改动前存一份快照，供撤销。 */
 export function snapshot(article, label) {
-  article.history.push({ label, at: new Date().toISOString(), title: article.title, titles: structuredClone(article.titles), blocks: structuredClone(article.blocks) })
+  article.history.push({ label, at: new Date().toISOString(), title: article.title, hook: article.hook ?? null, titles: structuredClone(article.titles), blocks: structuredClone(article.blocks) })
   if (article.history.length > HISTORY_MAX) article.history.splice(0, article.history.length - HISTORY_MAX)
 }
 
@@ -112,6 +117,7 @@ export function undo(article) {
   const last = article.history.pop()
   if (!last) return null
   article.title = last.title
+  article.hook = last.hook ?? null
   article.titles = last.titles
   article.blocks = last.blocks
   touch(article)
@@ -177,12 +183,15 @@ export function applyOps(article, ops) {
       const value = text(op.text, 80)
       if (value && value !== article.title) {
         article.title = value
+        article.hook = HOOK_IDS.includes(op.hook) ? op.hook : null
         receipts.push(`标题改成《${value}》`)
       }
     } else if (kind === 'titles') {
-      const values = (Array.isArray(op.list) ? op.list : []).map(v => text(typeof v === 'string' ? v : v?.text, 80)).filter(Boolean).slice(0, 8)
+      const values = (Array.isArray(op.list) ? op.list : [])
+        .map(v => ({ text: text(typeof v === 'string' ? v : v?.text, 80), hook: HOOK_IDS.includes(v?.hook) ? v.hook : null }))
+        .filter(v => v.text).slice(0, 8)
       if (values.length) {
-        article.titles = values.map(value => ({ text: value }))
+        article.titles = values
         receipts.push(`重写了 ${values.length} 个标题候选`)
       }
     } else if (kind === 'rewrite' && target) {
@@ -221,6 +230,7 @@ export function listMeta(article) {
   const chars = article.blocks.reduce((sum, block) => sum + plainOf(block.text).length, 0)
   return {
     id: article.id, title: article.title || article.topic || '未命名文章', updatedAt: article.updatedAt, chars,
+    hook: article.hook ?? null,
     lastView: article.lastView === 'layout' ? 'layout' : 'paper',
     archivedAt: article.archivedAt ?? null,
     coverId: article.cover?.id ?? null,

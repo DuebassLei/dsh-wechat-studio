@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url'
 const BUNDLED = join(dirname(fileURLToPath(import.meta.url)), '..', 'skills')
 const SESSION_ID = `dsh-wechat-studio-${randomUUID()}`
 export const SKILL_NAMES = ['writer', 'headline', 'humanizer', 'zhuque', 'banner']
+export const COVER_SKILL_DIR = join(BUNDLED, 'linyuebanzi-cover-banner')
 
 /** 最近一次模型调用的结果。选了模型不等于能用，比如还没配密钥。 */
 export const modelStatus = { ok: null, error: null }
@@ -32,18 +33,23 @@ export async function loadSkill(name, overrideDir) {
  * @returns {Promise<Array<{name: string, source: 'user'|'bundled', path: string, chars: number}>>} 列表。
  */
 export async function skillSources(overrideDir) {
-  return Promise.all(SKILL_NAMES.map(async name => {
-    for (const [dir, source] of [[overrideDir, 'user'], [BUNDLED, 'bundled']]) {
+  const entries = SKILL_NAMES.map(name => ({
+    name, file: `${name}.md`, sources: [[overrideDir, 'user'], [BUNDLED, 'bundled']],
+  }))
+  entries.push({ name: 'cover', file: 'SKILL.md', sources: [[COVER_SKILL_DIR, 'bundled']] })
+  return Promise.all(entries.map(async ({ name, file, sources }) => {
+    const displayPath = name === 'cover' ? `linyuebanzi-cover-banner/${file}` : file
+    for (const [dir, source] of sources) {
       if (!dir) continue
-      const path = join(dir, `${name}.md`)
+      const path = join(dir, file)
       try {
         const info = await stat(path)
-        if (info.isFile()) return { name, source, path, chars: info.size }
+        if (info.isFile()) return { name, source, path, displayPath, chars: info.size }
       } catch {
         // 没有就看下一个
       }
     }
-    return { name, source: 'missing', path: '', chars: 0 }
+    return { name, source: 'missing', path: '', displayPath, chars: 0 }
   }))
 }
 

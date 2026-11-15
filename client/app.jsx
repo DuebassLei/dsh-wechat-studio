@@ -12,6 +12,7 @@ import { COVER_STYLES } from '../src/cover-styles.js'
 import React from 'react'
 import { cardMarkdown, emphasisFormats, formatSelection, insertFormats } from './editor-format.js'
 import { act, copyDetectionText, copyMarkdown, copyText, getState, loadLayout, loadModels, loadRevisions, loadSettings, loadSkills, rememberArticleView, saveSettings, setState, testZhuque, toast, uploadReport, useStudio } from './state.js'
+import { InsightsView } from './insights.jsx'
 
 const ICONS = {
   check: 'M3 8.5l3.2 3.2L13 5',
@@ -1419,7 +1420,7 @@ const MODULES = [
   { id: 'materials', label: '素材', icon: 'materials', soon: true, title: '素材', lead: '把零散的灵感、链接、聊天记录先放这里，攒够了挑几条一起成稿。', points: ['一句话、一个链接、一段聊天记录，贴进来就是一张卡片', '挑几张卡片一起成稿，稿子会记住用了哪些素材', '素材里出现过的事实和原话，写稿时优先用'] },
   { id: 'paper', label: '稿面', icon: 'doc' },
   { id: 'schedule', label: '排期', icon: 'schedule', soon: true, title: '排期', lead: '把写好的稿子拖到日历上，排好哪天几点发。', points: ['一张日历看清这周要发什么', '右上角永远是下一篇要发的', '发完标记一下，进复盘'] },
-  { id: 'insights', label: '复盘', icon: 'insights', soon: true, title: '复盘', lead: '导入公众号后台导出的数据，看哪种写法读的人更多。', points: ['阅读、在看、转发按篇对比', '成稿时记下的标题套路、横幅和皮肤，可以拿来比较', '从数据里提炼出的规则，一键写进写作 skill'] },
+  { id: 'insights', label: '复盘', icon: 'insights', title: '复盘', lead: '导入公众号后台导出的数据，看哪种写法读的人更多。', points: ['单篇阅读、账号每日趋势按篇对比', '成稿时记下的标题套路、横幅和皮肤，可以拿来比较', '从数据里提炼出的规则，确认后写进写作 skill'] },
   { id: 'skills', label: '技能', icon: 'skills' },
 ]
 
@@ -1429,6 +1430,7 @@ const SKILL_INFO = {
   humanizer: { name: '去 AI 味', use: '改写朱雀标红的段落' },
   zhuque: { name: '朱雀流程', use: '按报告逐段改，什么时候停手' },
   banner: { name: '开头横幅', use: '按文章写横幅规格' },
+  cover: { name: '封面生成', use: '按文章和所选风格填写封面提示词。技能、六套风格模板和禁用词表都在内置技能目录。' },
 }
 
 function Rail({ module }) {
@@ -1467,7 +1469,7 @@ function SkillsView() {
   return (
     <div className="ws-page">
       <h1 className="ws-page-title">技能</h1>
-      <p className="ws-page-lead">写稿、改稿、出标题、去 AI 味、做横幅，都按下面这几份 skill 来。想换成自己的写法，把同名文件放进覆盖目录，下一次调用就会用你的版本，不用改插件。</p>
+      <p className="ws-page-lead">这里显示插件当前使用的技能。写作、标题、去 AI 味、朱雀流程和开头横幅可以通过下方目录覆盖。封面生成从内置技能目录读取。</p>
       <div className="ws-skill-list">
         {skills.skills.map(item => (
           <div className="ws-skill" key={item.name}>
@@ -1476,7 +1478,7 @@ function SkillsView() {
               <span className={`ws-skill-src ${item.source === 'user' ? 'is-user' : ''}`}>{item.source === 'user' ? '你的版本' : item.source === 'missing' ? '缺失' : '内置'}</span>
             </div>
             <p className="ws-muted">{SKILL_INFO[item.name]?.use}</p>
-            <code>{item.name}.md{item.chars ? ` · ${Math.round(item.chars / 1000)}K` : ''}</code>
+            <code>{item.displayPath ?? `${item.name}.md`}{item.chars ? ` · ${Math.round(item.chars / 1000)}K` : ''}</code>
           </div>
         ))}
       </div>
@@ -1742,6 +1744,7 @@ export function Studio() {
   let content
   if (!data) content = <div className="ws-center">{error ? <p className="ws-muted">加载失败：{error}</p> : <span className="ws-shimmer">正在打开稿面…</span>}</div>
   else if (item.id === 'paper') content = paperHome ? <DraftHome data={data} /> : <PaperModule data={data} />
+  else if (item.id === 'insights') content = <InsightsView />
   else if (item.id === 'skills') content = <SkillsView />
   else content = <SoonView item={item} />
   return (

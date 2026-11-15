@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises'
-import { callModel, extractJson } from './ai.js'
+import { join } from 'node:path'
+import { callModel, COVER_SKILL_DIR, extractJson } from './ai.js'
 
-const root = new URL('../skills/linyuebanzi-cover-banner/', import.meta.url)
-const read = file => readFile(new URL(file, root), 'utf8')
+const read = file => readFile(join(COVER_SKILL_DIR, file), 'utf8')
 
 export async function coverPrompt(ctx, title, markdown, style = 'classic') {
   const templateName = style === 'classic' ? 'prompt_template.md' : `prompt_template_${style}.md`

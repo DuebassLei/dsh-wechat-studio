@@ -10,9 +10,10 @@ export function dshHome() {
 const EMPTY = { v: 1, currentId: null, articles: [] }
 
 export class Store {
-  constructor(root = join(dshHome(), 'wechat-studio')) {
+  constructor(root = join(dshHome(), 'wechat-studio'), { file = 'state.json', empty = EMPTY } = {}) {
     this.root = root
-    this.file = join(root, 'state.json')
+    this.file = join(root, file)
+    this.empty = empty
     this.queue = Promise.resolve()
     this.cache = null
   }
@@ -21,10 +22,11 @@ export class Store {
     if (this.cache) return this.cache
     try {
       const parsed = JSON.parse(await readFile(this.file, 'utf8'))
-      this.cache = { ...EMPTY, ...parsed, articles: Array.isArray(parsed.articles) ? parsed.articles : [] }
+      this.cache = { ...this.empty, ...parsed }
+      if (Array.isArray(this.empty.articles)) this.cache.articles = Array.isArray(parsed.articles) ? parsed.articles : []
     } catch (err) {
       if (err.code !== 'ENOENT' && !(err instanceof SyntaxError)) throw err
-      this.cache = structuredClone(EMPTY)
+      this.cache = structuredClone(this.empty)
     }
     return this.cache
   }

@@ -29,7 +29,7 @@ const DRAFT = `# 排版交给 AI 后，我再没开过编辑器
 
 const replies = {
   draft: () => DRAFT,
-  titles: () => JSON.stringify({ titles: ['排版交给 AI 后，我再没开过编辑器', '写完就能发：不用手动排版的公众号流程', '排版这件事，本来就不该人来做'], summary: '写完 Markdown 就能发，排版这一步交给流程。' }),
+  titles: () => JSON.stringify({ titles: [{ text: '排版交给 AI 后，我再没开过编辑器', hook: 'A' }, { text: '写完就能发：不用手动排版的公众号流程', hook: 'D' }, { text: '排版这件事，本来就不该人来做', hook: 'B' }], summary: '写完 Markdown 就能发，排版这一步交给流程。', recommendationReason: '最具体，有反差' }),
   chat: user => {
     const no = Number(/第\s*(\d+)\s*段/.exec(user.split('# 作者这次说').pop())?.[1] ?? 1)
     return JSON.stringify({ reply: `改了第 ${no} 段，其他段落没动。`, ops: [{ op: 'rewrite', block: no, text: '（演示）这一段按你的意见重写过了。' }] })

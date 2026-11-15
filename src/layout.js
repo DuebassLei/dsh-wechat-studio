@@ -11,6 +11,9 @@ const VENDOR = join(dirname(fileURLToPath(import.meta.url)), '..', 'vendor', 'la
 const PYTHONS = [process.env.WECHAT_STUDIO_PYTHON, 'python3', '/usr/bin/python3', '/opt/homebrew/bin/python3', '/usr/local/bin/python3'].filter(Boolean)
 export const STYLES = ['std', 'mag', 'min', 'geek', 'bold', 'neo', 'note', 'zen', 'bento', 'dark']
 export const THEMES = ['orange', 'blue', 'teal', 'ink', 'navy', 'violet', 'rose', 'amber', 'morandi', 'forest', 'petrol', 'mist', 'matcha', 'cocoa', 'dusty']
+// 显示名与 vendor/layout/layout.py 的 STYLES/THEMES 保持一致，复盘对比块用
+export const STYLE_NAMES = { std: '标准', mag: '杂志', min: '极简', geek: '极客', bold: '醒目', neo: '质感', note: '手账', zen: '雅致', bento: '卡片', dark: '暗夜' }
+export const THEME_NAMES = { orange: '品牌橙', blue: '科技蓝', teal: '薄荷绿', ink: '墨黑', navy: '藏青金', violet: '葡萄紫', rose: '胭脂红', amber: '琥珀', morandi: '莫兰迪', forest: '松柏金', petrol: '孔雀青', mist: '雾霾蓝', matcha: '橄榄绿', cocoa: '可可棕', dusty: '豆沙粉' }
 
 function run(file, args, { input, cwd } = {}) {
   return new Promise((resolve, reject) => {

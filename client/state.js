@@ -3,7 +3,7 @@ import React from 'react'
 
 const BASE = 'wechat-studio/'
 
-let snap = { data: null, error: null, view: 'paper', paperHome: true, dialog: null, toast: null, editing: null, layout: null, pending: null, chatOpen: true, bannerTried: {}, module: 'paper', skills: null, settings: null }
+let snap = { data: null, error: null, view: 'paper', paperHome: true, dialog: null, toast: null, editing: null, layout: null, pending: null, chatOpen: true, bannerTried: {}, module: 'paper', skills: null, settings: null, insights: null, insightsRange: 'all', insightsError: null, insightsRulePreview: null }
 const listeners = new Set()
 let timer = null
 
@@ -199,3 +199,85 @@ export async function testZhuque(patch) {
 export async function loadModels() {
   return request('models')
 }
+
+// ---------- 复盘 ----------
+
+function acceptInsights(data) {
+  setState({ insights: data, insightsRange: data.range, insightsError: null })
+}
+
+export async function loadInsights(range) {
+  const target = range ?? snap.insightsRange ?? 'all'
+  try {
+    acceptInsights(await request(`insights/data?${new URLSearchParams({ range: target })}`))
+  } catch (err) {
+    setState({ insightsError: err.message })
+  }
+}
+
+export async function importInsights(file) {
+  if (!file) return false
+  setState({ pending: 'insights/import' })
+  try {
+    acceptInsights(await request(`insights/import?${new URLSearchParams({ name: file.name, range: snap.insightsRange })}`, { method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: file }))
+    toast(`已导入「${file.name}」`)
+    return true
+  } catch (err) {
+    toast(err.message, true)
+    return false
+  } finally {
+    setState({ pending: null })
+  }
+}
+
+async function insightsMutate(path, body) {
+  setState({ pending: path })
+  try {
+    acceptInsights(await request(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...body, range: snap.insightsRange }) }))
+    return true
+  } catch (err) {
+    toast(err.message, true)
+    return false
+  } finally {
+    setState({ pending: null })
+  }
+}
+
+/** articleId：稿件 id；null 保持未匹配；'auto' 清掉手动指定、回到按标题自动对。 */
+export const matchInsight = (key, articleId) => insightsMutate('insights/match', { key, articleId })
+export const matchInsightDetail = (key, articleKey) => insightsMutate('insights/detail-match', { key, articleKey })
+export const setInsightDetailTopic = (key, topic) => insightsMutate('insights/detail-topic', { key, topic })
+export const saveInsightExperiment = experiment => insightsMutate('insights/experiment', experiment)
+export const setInsightHook = (key, hook) => insightsMutate('insights/hook', { key, hook })
+
+export async function previewInsightRule(ruleId) {
+  const range = snap.insightsRange
+  setState({ pending: 'insights/rule-preview' })
+  try {
+    const preview = await request('insights/rule-preview', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ruleId, range }) })
+    setState({ insightsRulePreview: { ...preview, range } })
+    return preview
+  } catch (err) {
+    toast(err.message, true)
+    return null
+  } finally {
+    setState({ pending: null })
+  }
+}
+
+export async function applyInsightRule(ruleId) {
+  setState({ pending: 'insights/rule-apply' })
+  try {
+    const result = await request('insights/rule-apply', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ruleId, range: snap.insightsRulePreview?.range }) })
+    setState({ insightsRulePreview: null })
+    toast(`已写进 ${result.skill}.md`)
+    return result
+  } catch (err) {
+    toast(err.message, true)
+    return null
+  } finally {
+    setState({ pending: null })
+  }
+}
+
+export const closeInsightRule = () => setState({ insightsRulePreview: null })

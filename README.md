@@ -1,100 +1,122 @@
-# 公众号成稿台（dsh-wechat-studio）
+# 公众号成稿台
 
-**DeepSeek Harness 的一个插件。把写好的文章放上来，改到能发为止。**
+**面向微信公众号长文的 DeepSeek Harness 插件。** 在侧栏里完成写稿、改稿、质检、封面生成、排版和发布后复盘。
 
-装在 DeepSeek Harness 侧栏里的一个页面，只做公众号长文这一件事：
+[快速开始](#快速开始) · [写作与发布](#写作与发布) · [数据复盘](#数据复盘) · [配置与数据](#配置与数据) · [开发](#开发)
 
-- **写稿**：给一句选题和素材，按 writer skill 写出正文，接着出标题候选和摘要。也可以把写好的 Markdown 直接贴进来。
-- **按段改稿**：左边说一句「第 3 段太啰嗦」，只改第 3 段，其他段落一个字不动，每一步都能撤销。点正文也能直接手改。
-- **朱雀质检**：在设置里填一次朱雀 API Key，之后点「一键检测」，标红的段落会在纸边挂上批注，点「改这段」只改这一段，标红段多的时候点「一键处理」，相邻的标红段成组改写（按 zhuque skill 的顺序，跳过改过两轮、该退回和噪声带的段，整批一次撤销），改完再检测一轮。没有 Key 也能用：复制检测文本 → 到朱雀网站检测并下载报告 PDF → 把 PDF 拖回来。
-- **排版预览和复制**：10 套风格 × 15 套配色，点「复制全文到公众号」，到公众号编辑器里粘贴。
-- **开头横幅**：第一次打开排版预览时按文章自动做一条（大字海报 / 标题卡 / 动画场景 / 不要横幅可切换），规格过一遍横幅脚本的字数检查，超了会让模型改一次。
+## 快速开始
 
-> 状态：0.1.0，第一版。素材墙、排期、复盘和封面还没做。
+### 安装到 DeepSeek Harness
 
-## 安装
-
-要求 DeepSeek Harness `0.2.1-rc.5` 及以上的 `0.2.x`，本机有 Python 3（排版脚本用，只用标准库）。
+需要 DeepSeek Harness `>=0.2.1-rc.5 <0.3.0`、Node.js 20 或更高版本，以及 Python 3。排版使用 Python 标准库。封面裁切目前依赖 macOS 的 `sips`。
 
 ```bash
-git clone <这个仓库> && cd dsh-wechat-studio
-npm install && npm run build        # 仓库里已带 dist/，改过 client/ 才需要重新 build
-dsh plugin --profile desktop add "$PWD"   # 网页版把 desktop 换成 web
+git clone https://github.com/lqshow/dsh-wechat-studio.git
+cd dsh-wechat-studio
+npm ci
+npm run build
+dsh plugin --profile desktop add "$PWD"
 ```
 
-桌面版要先完全退出（⌘Q）再装，装好重新打开；网页版装好后重启 `dsh web`。侧栏会出现「公众号成稿台」。
-卸载：`dsh plugin --profile desktop remove dsh-wechat-studio`。
+桌面版请在安装前完全退出 DeepSeek Harness（`⌘Q`），安装后重新打开。网页版把命令中的 `desktop` 换成 `web`，安装后重启 `dsh web`。从宿主侧栏打开「公众号成稿台」。
 
-## 不装 DSH 先看一眼
+卸载桌面版插件可运行 `dsh plugin --profile desktop remove dsh-wechat-studio`。
 
-```bash
-npm install && npm run build && npm run dev   # http://127.0.0.1:4173
-```
+### 独立预览
 
-这是一个假宿主加假模型的本地预览，模型回复是写死的，只用来看界面和流程。数据在 `.dev/`，不碰 `~/.dsh`。
+在仓库目录执行 `npm ci`、`npm run build` 和 `npm run dev`，然后打开 [本地预览](http://127.0.0.1:4173)。预览使用模拟宿主和固定的模型回复，数据保存在仓库的 `.dev/` 下。
 
-## 要花钱吗
+## 写作与发布
 
-插件免费开源，不带任何密钥。
+| 步骤 | 用法 |
+| --- | --- |
+| 创建稿件 | 输入选题和素材生成正文、标题候选与摘要，或粘贴、拖入已有的 Markdown（`.md` / `.markdown`）。 |
+| 编辑正文 | 直接编辑段落，或在对话里指定要修改的段落。支持卡片插入、正文目录、本机暂存、版本对比和恢复。 |
+| 朱雀质检 | 通过 API 检测，或导入朱雀 PDF 报告。纸边批注可定位待处理段落，支持单段改写和批量处理。 |
+| 封面生成 | 选择六套内置风格之一，通过火山方舟生成封面。可以从生成历史中选用已有封面。 |
+| 公众号排版 | 选择正文风格、配色、开头横幅和文末关注卡。预览支持 10 套正文风格和 15 套配色。 |
+| 复制到公众号 | 在排版预览中点「复制全文到公众号」，然后粘贴到公众号编辑器。按自查报告处理外部图片和视频占位。 |
 
-| | 用什么 | 费用 |
+素材和排期入口目前为预留页面。
+
+## 数据复盘
+
+在「复盘」中导入微信公众号后台导出的 `.xls` 文件。三类数据可独立查看。
+
+| 导出类型 | 可以查看的内容 |
+| --- | --- |
+| 数据趋势 | 账号每日阅读与分享、渠道来源、单篇在统计窗口内的阅读人数与占比。 |
+| 用户增长 | 每日新关注、取消关注和净增，以及期末累计关注。 |
+| 单篇数据明细 | 阅读趋势、渠道、受众分布，以及消息打开比例、完读、停留、分享和新增关注等诊断指标。 |
+
+关联趋势卡片后，可以从对应文章打开单篇明细。关联稿件后，复盘还能引用稿面的封面、标题套路和排版记录。给同类文章标记相同题材后，成绩单可比较发表首日或前 7 天表现，并把符合条件的文章放入「本期值得看的文章」。
+
+可以从成绩单记录「下一篇试什么」，再关联下一篇稿件。新稿明细导入并关联后，可比较两篇发表后 7 天的表现并记录结论。由数据生成的 Skill 规则提供预览，确认后才写入本地覆盖目录。
+
+阅读人数以对应导出表的统计口径为准。按天累计的指标可能重复计入跨天读者。「近 7 天 / 近 30 天」筛选的是文章发表日期，账号趋势和用户增长各自使用导出表的统计窗口。
+
+## 配置与数据
+
+### 按需配置服务
+
+插件采用 MIT 许可证。模型、检测、生图和图床服务使用你自己的账号及额度，费用按各服务商规则计算。
+
+| 服务 | 用途 | 配置入口 |
 | --- | --- | --- |
-| 写稿、改稿、出标题、做横幅 | DeepSeek Harness 里你配好的模型 | 按你自己的模型账户计费 |
-| 朱雀一键检测 | 你自己的 EdgeOne Makers API Key | 计入 Makers 平台每月的免费额度，超出部分按腾讯云的价格 |
-| 朱雀手动上传报告 | 朱雀网站 | 插件不碰你的朱雀账号 |
+| DeepSeek Harness 模型 | 写稿、改稿、标题、横幅和封面提示词 | 在宿主配置模型，然后在插件里选择。 |
+| 朱雀 API | 在线检测正文 | 在 EdgeOne Makers 的 Models → API Key 创建密钥，在插件「设置 → 朱雀质检」测试并保存。也可直接上传报告 PDF。 |
+| 火山方舟 | 生成封面图 | 在「设置 → 封面生成」填写 API Key，并选择生图模型。 |
+| Cloudinary | 转存飞书 Markdown 中的授权下载图片 | 在「设置 → 图片图床」填写 Cloud Name、API Key 和 API Secret。 |
 
-### 朱雀 API Key 怎么拿
+导入飞书 Markdown 后，图片会在后台转存，成功后正文使用 Cloudinary 的可访问地址。如果失败，可以在稿面重试。飞书链接过期时，请重新从飞书复制 Markdown。
 
-1. 登录腾讯云 EdgeOne 控制台，进入 Makers → Models → API Key。
-2. 点「创建 API Key」，复制保存。
-3. 回到插件，点右上角的齿轮，粘贴，点「测试连接」，保存。
+朱雀 API 的置信度和 PDF 报告里的 AIGC 值分别显示。API 会按原文匹配段落，手动报告的段落对应由模型辅助，以报告原文为准。重复的开头语等内容，可在设置里加入检测时排除的固定句。
 
-接口说明见[腾讯云文档：使用朱雀模型](https://cloud.tencent.com/document/product/1552/137539)。密钥存在本机 `~/.dsh/wechat-studio/settings.json`（权限 600），页面拿不到明文，检测时由插件的 Host 直接发给腾讯云的接口。
+### 技能与存储
 
-## 数据存在哪
+插件数据默认在 `~/.dsh/wechat-studio/`。设置 `DSH_HOME` 后，根目录改为 `$DSH_HOME/wechat-studio/`。
 
-全在本机 `~/.dsh/wechat-studio/`：`state.json` 是文章，`settings.json` 是设置。没有云端。
+| 文件或目录 | 用途 |
+| --- | --- |
+| `state.json` | 稿件、编辑历史和稿面状态 |
+| `settings.json` | 插件设置和服务凭证 |
+| `insights.json` | 复盘导入数据、匹配、题材和写作尝试 |
+| `covers/` | 生成的封面图片 |
+| `skills/` | 用户覆盖技能，以及确认写入的复盘规则 |
 
-设置里的「检测时去掉的固定句」：检测文本里含有这些文字的行会整行去掉（每篇都一样的开头语会和正文混进同一个片段，把分数拉高）。默认是作者自己的两句，点齿轮换成你自己的。
+未保存的段落文字和上次编辑位置保存在当前宿主的本地存储中。调用模型、朱雀、火山方舟或 Cloudinary 时，相应任务的数据会发送给所用服务。
 
-## 换成你自己的写作风格
+可覆盖的内置技能包括 [写作](skills/writer.md)、[标题](skills/headline.md)、[去 AI 味](skills/humanizer.md)、[朱雀流程](skills/zhuque.md)和[开头横幅](skills/banner.md)。将同名文件放进数据目录的 `skills/`，下一次调用就会读取该版本。
 
-写作、标题、去 AI 味、横幅由 `skills/` 里的五份 Markdown 驱动（`writer` `headline` `humanizer` `zhuque` `banner`），默认是林月半子的那一套。在 `~/.dsh/wechat-studio/skills/` 放同名文件（比如 `writer.md`）就会覆盖对应的那一份，不用改插件。
-
-## 关于朱雀质检
-
-- 一键检测：朱雀按片段返回原文、标签（人工 / 疑似 AI / AI 生成）和置信度，插件按文字把片段对回段落，一段被多个片段盖住时取最重的结论，对不上的段落不下结论。
-- 手动上传报告：报告里的 AIGC 值来自朱雀，把片段对回段落这一步由模型完成，偶尔会对错段，以报告原文为准。
-- 两种方式的分数含义不同（置信度和 AIGC 值），界面上分开显示，不要混着比。
-- 插件不承诺具体分数。同一段最多改两轮，改完结论反而更重就退回上一版。这些规则来自 `skills/zhuque.md`。
+[封面技能](skills/linyuebanzi-cover-banner/SKILL.md)从插件内置目录读取。风格模板与禁用词表位于同目录的 [references](skills/linyuebanzi-cover-banner/references/)，封面生成时会重新读取。
 
 ## 开发
 
 ```bash
-npm test          # Host 逻辑测试（需要 python3；PDF 那条需要 Chrome 和 pdftotext，没有会跳过）
-npm run watch     # 监听 client/ 并重新打包
-npm run dev       # 本地预览
-npm pack          # 打出可安装的 tgz
+npm ci
+npm run build    # 构建 dist/client.js
+npm run watch    # 监听客户端并重新构建
+npm run dev      # 启动本地预览
+npm test         # 运行自动化测试
+npm pack         # 构建并打包可安装的 tgz
 ```
 
-| 目录 | 内容 |
+修改 `src/` 后重启宿主。测试需要 Python 3。PDF 用例是否运行取决于本机的 Chrome 和 PDF 工具。
+
+| 目录 | 职责 |
 | --- | --- |
-| `client/` | 界面：稿面、对话、纸边批注、右栏、排版预览 |
-| `src/` | Host 接口、文章模型、流水线、调模型、排版、朱雀 API 和报告、设置 |
-| `skills/` | 写作、标题、去 AI 味、朱雀流程、开头横幅五份 skill |
-| `vendor/layout/` | 排版脚本，来自 [lqshow/wechat-article-skills](https://github.com/lqshow/wechat-article-skills)（MIT） |
-| `scripts/` | 打包、本地预览 |
+| `client/` | 稿面、编辑器、排版预览、设置与复盘界面 |
+| `src/` | Host 接口、文章流水线、模型调用、数据存储与 XLS 解析 |
+| `skills/` | 随插件分发的技能和封面模板 |
+| `vendor/layout/` | 微信公众号排版引擎 |
+| `scripts/` | 构建和本地预览脚本 |
+| `test/` | 核心逻辑和 Host 接口测试 |
+| `dist/` | 宿主加载的客户端构建产物 |
 
-改了 `src/` 要重启 DeepSeek Harness。
+Host 接口通过宿主鉴权。页面只读取凭证是否已配置，密钥由 Host 使用。模型返回的改稿操作经过白名单和段号校验。
 
-**安全：** 每个接口都经过宿主鉴权；朱雀密钥不回传给页面，自定义接口地址只收 https；模型输出只取白名单里的操作和字段，段号越界的丢弃；调用 `python3` 和 `pdftotext` 不经过 shell。
+## 许可证与致谢
 
-## 致谢
+本项目是社区插件，采用 [MIT 许可证](LICENSE)。
 
-- [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的开放插件系统。
-
-MIT · 社区插件，与 DeepSeek 无关。
-
-飞书 Markdown 图片：在插件「设置 → Cloudinary 图床」填写 Cloud Name、API Key、API Secret（可从 [Cloudinary 控制台](https://console.cloudinary.com/settings/api-keys) 获取）。把飞书 Markdown 贴进来后，点击「放上稿面」，插件会转存其中的飞书授权下载图片，并把地址替换为 Cloudinary 的 HTTPS 地址。上传后的图片可通过地址直接访问。正文先打开，图片在后台转存。失败的图片保留原链接，可在稿面重试。如果飞书链接已过期，请重新复制 Markdown。
-
-封面提示词由 [项目内的林月半子封面技能](skills/linyuebanzi-cover-banner/SKILL.md) 驱动。修改该目录下的技能说明、对应风格的 `references/prompt_template*.md` 或 `references/blocklist.txt`，下次生成时会重新读取。模板的第一个代码块是发给生图模型的正文，`{{…}}` 由文本模型按规则填写。
+感谢 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 提供插件系统。排版引擎来自 [lqshow/wechat-article-skills](https://github.com/lqshow/wechat-article-skills)，同样采用 MIT 许可证。

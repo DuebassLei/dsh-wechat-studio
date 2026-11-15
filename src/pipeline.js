@@ -1,7 +1,7 @@
 // 成稿流水线：写正文 → 出标题；对话改稿；按朱雀报告改标红段。
 // 任务在 Host 里跑，关掉页面不会中断；同一篇文章同时只跑一个任务。
 import { callModel, cleanMarkdown, extractJson, loadSkill } from './ai.js'
-import { applyOps, fixGroups, fixPlan, numbered, setBody, snapshot, toMarkdown, touch } from './article.js'
+import { applyOps, fixGroups, fixPlan, HOOK_IDS, numbered, setBody, snapshot, toMarkdown, touch } from './article.js'
 import { BANNER_STYLES, bannerGuide, bannerRules, DEFAULT_BANNER, normalizeSpec } from './banner.js'
 import { checkBanner, detectionText } from './layout.js'
 import { applyReport, markBlocks } from './report.js'
@@ -14,8 +14,9 @@ const DRAFT_RULES = `# 本次输出要求
 - 需要截图的地方写 \`[截图：内容]\` 占位。`
 
 const TITLE_RULES = `# 本次输出要求
-为文章写 5 个候选标题和一条摘要。选出最准确、具体且有吸引力的一条放在第一位，给出一句具体的主推理由（40 字以内）。只输出 JSON：
-{"titles":["标题一","标题二","标题三","标题四","标题五"],"summary":"摘要","recommendationReason":"主推第一条的理由"}`
+为文章写 5 个候选标题和一条摘要。选出最准确、具体且有吸引力的一条放在第一位，给出一句具体的主推理由（40 字以内）。
+每个标题标注它用的钩子：A 自我打脸、B 反转、C 被求助、D 技术发现；都不像就填 other。只输出 JSON：
+{"titles":[{"text":"标题一","hook":"C"},{"text":"标题二","hook":"A"},{"text":"标题三","hook":"B"},{"text":"标题四","hook":"D"},{"text":"标题五","hook":"other"}],"summary":"摘要","recommendationReason":"主推第一条的理由"}`
 
 const CHAT_RULES = `# 你现在的工作：按作者的一句话改稿
 作者会给你一篇分好段、带段号的文章，和一句修改意见。你只输出 JSON，不要解释：
@@ -25,13 +26,14 @@ const CHAT_RULES = `# 你现在的工作：按作者的一句话改稿
 - {"op":"rewrite","block":段号,"text":"改写后的整段 Markdown"}
 - {"op":"insert_after","block":段号,"text":"新段落"}（block 填 0 表示插在最前面）
 - {"op":"delete","block":段号}
-- {"op":"title","text":"新标题"}
-- {"op":"titles","list":["候选一","候选二","候选三"]}
+- {"op":"title","text":"新标题","hook":"C"}
+- {"op":"titles","list":[{"text":"候选一","hook":"C"},{"text":"候选二","hook":"A"}]}
 
 规则：
 - 只动作者点名的段落。没点名、但意见明显只针对某几段时，只改那几段。其余段落一个字都不要动。
 - 段号用文章里【】中的数字，指的是修改前的位置。
 - 改写时保留这一段原有的 Markdown 记号（加粗、引用、列表、代码块）。
+- 改标题时给 hook 标注钩子：A 自我打脸、B 反转、C 被求助、D 技术发现，都不像填 other。
 - 不编造作者没提供的经历、数字和原话。缺细节就写 [可补：需要什么]。
 - 作者只是提问、没让你改时，ops 留空数组，在 reply 里回答。`
 
@@ -126,19 +128,26 @@ export class Pipeline {
     const system = `${await loadSkill('headline', this.skillsDir)}\n\n${TITLE_RULES}`
     const raw = await callModel(this.ctx, { system, user: toMarkdown(article), task: 'titles', maxTokens: 3000 })
     const parsed = extractJson(raw)
-    const list = (Array.isArray(parsed?.titles) ? parsed.titles : []).map(row => (typeof row === 'string' ? row : row?.text)).filter(value => typeof value === 'string' && value.trim()).map(value => value.trim().slice(0, 80)).slice(0, 8)
+    const seen = new Set()
+    const list = (Array.isArray(parsed?.titles) ? parsed.titles : [])
+      .map(row => ({ text: String(typeof row === 'string' ? row : row?.text ?? '').trim().slice(0, 80), hook: HOOK_IDS.includes(row?.hook) ? row.hook : null }))
+      .filter(v => v.text && !seen.has(v.text) && seen.add(v.text)).slice(0, 8)
     if (!list.length) throw new Error('模型没有给出可用的标题')
     await this.store.update(state => {
       const target = state.articles.find(a => a.id === articleId)
       if (!target) return
       snapshot(target, '出标题')
       const reason = typeof parsed.recommendationReason === 'string' ? parsed.recommendationReason.trim().slice(0, 80) : ''
-      target.titles = [...new Set(list)].map((text, index) => ({
-        text,
+      target.titles = list.map((v, index) => ({
+        text: v.text,
+        hook: v.hook,
         ...(index === 0 && reason ? { recommended: true, reason } : {}),
       }))
       if (typeof parsed.summary === 'string') target.summary = parsed.summary.trim().slice(0, 300)
-      if (!target.title) target.title = list[0]
+      if (!target.title) {
+        target.title = list[0].text
+        target.hook = list[0].hook
+      }
       touch(target)
     })
   }

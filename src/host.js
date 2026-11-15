@@ -4,12 +4,13 @@ import { COVER_RESOLUTIONS, COVER_FORMATS, MAX_COVER_COUNT } from './cover-optio
 import { join } from 'node:path'
 import { defaultSelection, listModels, modelInfo, modelOverride, modelStatus, setModelOverride, skillSources } from './ai.js'
 import { BANNER_CHOICES, BANNER_STYLES, DEFAULT_BANNER } from './banner.js'
-import { blockKind, createArticle, fixPlan, isCheckable, listMeta, newId, revisionChanges, snapshot, splitMarkdown, toMarkdown, touch, undo } from './article.js'
+import { blockKind, createArticle, fixPlan, HOOK_IDS, isCheckable, listMeta, newId, revisionChanges, snapshot, splitMarkdown, toMarkdown, touch, undo } from './article.js'
 import { transferFeishuImages } from './cloudinary.js'
 import { feishuImageUrls, replaceFeishuImages } from './markdown-images.js'
 import { coverPrompt, generateArkCover, readCover, saveCover } from './cover.js'
 import { COVER_STYLES } from './cover-styles.js'
 import { STYLES, THEMES, detectionText, renderLayout } from './layout.js'
+import { applyRule, buildInsights, EXPERIMENT_RESULTS, importData, INSIGHTS_EMPTY, previewRule } from './insights.js'
 import { Pipeline } from './pipeline.js'
 import { pdfToText } from './report.js'
 import { publicSettings, readSettings, updateSettings } from './settings.js'
@@ -18,6 +19,7 @@ import { detect } from './zhuque.js'
 
 const MAX_JSON = 2_000_000
 const MAX_PDF = 30_000_000
+const MAX_IMPORT = 10_000_000
 function json(res, status, body) {
   res.statusCode = status
   res.setHeader('content-type', 'application/json; charset=utf-8')
@@ -50,6 +52,11 @@ function bannerView(article) {
   const style = article.bannerStyle ?? DEFAULT_BANNER
   const saved = article.banners?.[style]
   return { style, choices: BANNER_CHOICES.map(id => ({ id, name: BANNER_STYLES[id]?.name ?? '不要横幅' })), ready: style === 'none' || Boolean(saved), warnings: saved?.warnings ?? [], at: saved?.at ?? null }
+}
+
+async function insightsView(deps, range = 'all') {
+  const [insights, state] = await Promise.all([deps.insightsStore.read(), deps.store.read()])
+  return buildInsights(insights, state.articles, ['7', '30', 'all'].includes(range) ? range : 'all')
 }
 
 const imageJobs = new WeakMap()
@@ -243,6 +250,7 @@ export async function route(deps, req, res) {
       const dir = join(store.root, 'skills')
       return json(res, 200, { dir, skills: await skillSources(dir) })
     }
+    if (path === 'insights/data') return json(res, 200, await insightsView(deps, url.searchParams.get('range')))
     const article = mustFind(await store.read(), url.searchParams.get('id'))
     if (path === 'cover/image') {
       const id = url.searchParams.get('asset')
@@ -294,8 +302,61 @@ export async function route(deps, req, res) {
     return ok()
   }
 
+  if (path === 'insights/import') {
+    const fileName = String(url.searchParams.get('name') ?? '导出.xls').slice(0, 200)
+    const parsed = importData(await readBuffer(req, MAX_IMPORT), fileName)
+    await deps.insightsStore.update(state => {
+      if (parsed.kind !== 'detail') {
+        state[parsed.kind] = parsed
+        return
+      }
+      const existing = (state.details ?? []).find(detail => detail.key === parsed.key)
+      if (existing?.articleKey !== undefined) parsed.articleKey = existing.articleKey
+      if (existing?.topic) parsed.topic = existing.topic
+      state.details = [...(state.details ?? []).filter(detail => detail.key !== parsed.key), parsed]
+    })
+    return json(res, 200, await insightsView(deps, url.searchParams.get('range')))
+  }
+
   const body = await readJson(req)
   switch (path) {
+    case 'insights/experiment':
+      await deps.insightsStore.update(async state => {
+        const items = state.experiments ?? []
+        const existing = body.id ? items.find(item => item.id === body.id) : null
+        if (body.id && !existing) throw Object.assign(new Error('找不到这条尝试'), { status: 404 })
+        const sourceKey = existing?.sourceKey ?? body.sourceKey
+        const source = (state.details ?? []).find(detail => detail.key === sourceKey)
+        const action = typeof body.action === 'string' ? body.action.trim() : ''
+        if (!source || !action || action.length > 300) throw Object.assign(new Error('请选择来源文章，并填写 300 字以内的改法'), { status: 400 })
+        const draftId = body.draftId || null
+        if (draftId && !(await store.read()).articles.some(draft => draft.id === draftId)) {
+          throw Object.assign(new Error('找不到关联稿件'), { status: 404 })
+        }
+        const result = existing && existing.draftId === draftId && existing.action === action ? body.result ?? null : null
+        if (result != null && !Object.hasOwn(EXPERIMENT_RESULTS, result)) {
+          throw Object.assign(new Error('请选一个有效结论'), { status: 400 })
+        }
+        const item = { id: existing?.id ?? randomUUID(), sourceKey, action, draftId, result }
+        state.experiments = existing ? items.map(row => row.id === item.id ? item : row) : [item, ...items]
+      })
+      return json(res, 200, await insightsView(deps, body.range))
+    case 'insights/detail-topic':
+      await deps.insightsStore.update(state => {
+        const detail = (state.details ?? []).find(item => item.key === body.key)
+        if (!detail) throw Object.assign(new Error('没有这份单篇明细'), { status: 404 })
+        detail.topic = String(body.topic ?? '').normalize('NFKC').trim().replace(/\s+/g, ' ').slice(0, 40)
+      })
+      return json(res, 200, await insightsView(deps, body.range))
+    case 'insights/detail-match':
+      await deps.insightsStore.update(state => {
+        const detail = (state.details ?? []).find(item => item.key === body.key)
+        if (!detail) throw Object.assign(new Error('没有这份单篇明细'), { status: 404 })
+        if (body.articleKey === 'auto') delete detail.articleKey
+        else if (body.articleKey == null || state.tendency?.articles.some(row => row.key === body.articleKey)) detail.articleKey = body.articleKey
+        else throw Object.assign(new Error('没有这篇数据趋势文章'), { status: 404 })
+      })
+      return json(res, 200, await insightsView(deps, body.range))
     case 'articles/new': {
       const hasBody = typeof body.markdown === 'string' && body.markdown.trim()
       if (!hasBody && !String(body.topic ?? '').trim() && !String(body.material ?? '').trim()) throw Object.assign(new Error('写一句选题，或者贴入已有的文章。'), { status: 400 })
@@ -421,6 +482,7 @@ export async function route(deps, req, res) {
         if (!value || value === article.title) return
         snapshot(article, '换标题')
         article.title = value
+        article.hook = article.titles.find(t => t.text === value)?.hook ?? null
         touch(article)
       })
       return ok()
@@ -566,6 +628,40 @@ export async function route(deps, req, res) {
       pipeline.detect(article.id, { key: settings.zhuqueKey, endpoint: settings.zhuqueEndpoint, fixedLines: settings.fixedLines })
       return ok()
     }
+    case 'insights/match': {
+      const key = String(body.key ?? '')
+      await deps.insightsStore.update(async state => {
+        if (!state.tendency?.articles.some(a => a.key === key)) throw Object.assign(new Error('没有这篇导出文章'), { status: 404 })
+        if (body.articleId === 'auto') delete state.matches[key]
+        else if (body.articleId == null) state.matches[key] = null
+        else {
+          const draft = (await store.read()).articles.find(a => a.id === body.articleId)
+          if (!draft) throw Object.assign(new Error('没有这篇稿件'), { status: 404 })
+          state.matches[key] = body.articleId
+        }
+      })
+      return json(res, 200, await insightsView(deps, body.range))
+    }
+    case 'insights/hook': {
+      const key = String(body.key ?? '')
+      const hook = body.hook == null ? null : String(body.hook)
+      if (hook != null && !HOOK_IDS.includes(hook)) return json(res, 400, { error: '没有这种钩子类型' })
+      await deps.insightsStore.update(state => {
+        if (!state.tendency?.articles.some(a => a.key === key)) throw Object.assign(new Error('没有这篇导出文章'), { status: 404 })
+        if (hook == null) delete state.hooks[key]
+        else state.hooks[key] = hook
+      })
+      return json(res, 200, await insightsView(deps, body.range))
+    }
+    case 'insights/rule-preview': {
+      const [insights, state] = await Promise.all([deps.insightsStore.read(), store.read()])
+      return json(res, 200, await previewRule(insights, state.articles, String(body.ruleId ?? ''), join(store.root, 'skills'), body.range))
+    }
+    case 'insights/rule-apply': {
+      const [insights, state] = await Promise.all([deps.insightsStore.read(), store.read()])
+      const result = await applyRule(insights, state.articles, String(body.ruleId ?? ''), join(store.root, 'skills'), body.range)
+      return json(res, 200, result)
+    }
     default:
       return json(res, 404, { error: '没有这个接口' })
   }
@@ -583,7 +679,8 @@ export function requestRejection(ctx, req) {
 
 export function createHandler(ctx, { store = new Store(), fetchImpl } = {}) {
   const pipeline = new Pipeline({ ctx, store, skillsDir: join(store.root, 'skills'), fetchImpl })
-  const deps = { ctx, store, pipeline, fetchImpl }
+  const insightsStore = new Store(store.root, { file: 'insights.json', empty: INSIGHTS_EMPTY })
+  const deps = { ctx, store, pipeline, insightsStore, fetchImpl }
   // 启动时恢复用户在插件里选过的模型
   readSettings(store.root).then(saved => setModelOverride(saved.model)).catch(() => {})
   return async (req, res) => {

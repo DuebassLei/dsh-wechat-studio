@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
+import { BAILIAN_SIZES } from './cover-options.js'
 export { coverPrompt } from './cover-prompt.js'
 
 const run = promisify(execFile)
@@ -34,6 +35,55 @@ export async function generateArkCover(prompt, { apiKey, model, resolution, form
     ? image.toString('hex', 0, 3) === 'ffd8ff'
     : image.toString('hex', 0, 8) === '89504e470d0a1a0a'
   if (!valid) throw new Error('生成结果与所选图片格式不符。')
+  return image
+}
+
+export async function generateBailianCover(prompt, { apiKey, model, resolution }, fetchImpl = fetch) {
+  // 万相和千问图像共用同一个多模态同步接口，换 model 即可；万相不支持 prompt_extend，只给千问关掉自动扩写。
+  const parameters = { size: BAILIAN_SIZES[resolution], n: 1, watermark: false }
+  if (model.startsWith('qwen-image')) parameters.prompt_extend = false
+  const res = await fetchImpl('https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation', {
+    method: 'POST', redirect: 'error', signal: AbortSignal.timeout(180_000),
+    headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model,
+      input: { messages: [{ role: 'user', content: [{ image: portrait }, { text: prompt }] }] },
+      parameters,
+    }),
+  })
+  if (!res.ok) {
+    const code = (await res.json().catch(() => null))?.code
+    if (code === 'InvalidApiKey' || res.status === 401 || res.status === 403) throw new Error('百炼鉴权失败，请检查 API Key 是否属于中国内地（北京）及是否有模型权限。')
+    if (code === 'Throttling' || res.status === 429) throw new Error('百炼限流，请稍后重试。')
+    if (code === 'DataInspectionFailed') throw new Error('提示词未通过百炼内容审核，请调整后重试。')
+    throw new Error(`百炼生成失败（HTTP ${res.status}），请重试。`)
+  }
+  const data = await res.json()
+  // 百炼回的是 24 小时有效的 PNG 链接，要再下载成字节才能落盘裁切。
+  const url = data?.output?.choices?.[0]?.message?.content?.find(part => typeof part?.image === 'string')?.image
+  if (typeof url !== 'string') throw new Error('百炼未返回可保存的封面。')
+  const imageUrl = URL.canParse(url) ? new URL(url) : null
+  if (imageUrl?.protocol !== 'https:' || imageUrl.username || imageUrl.password) throw new Error('百炼返回了无效的 HTTPS 封面地址。')
+  const imageRes = await fetchImpl(url, { redirect: 'error', signal: AbortSignal.timeout(60_000) })
+  if (!imageRes.ok || !imageRes.body) {
+    await imageRes.body?.cancel().catch(() => {})
+    throw new Error('百炼封面下载失败，请重试。')
+  }
+  const tooLarge = () => new Error('百炼封面超过 24 MB，试试降低分辨率。')
+  if (Number(imageRes.headers.get('content-length')) > MAX_IMAGE) {
+    await imageRes.body.cancel().catch(() => {})
+    throw tooLarge()
+  }
+  const chunks = []
+  let size = 0
+  // 提前退出迭代会取消下载；即使服务端没提供 Content-Length 也能限制大小。
+  for await (const chunk of imageRes.body) {
+    size += chunk.byteLength
+    if (size > MAX_IMAGE) throw tooLarge()
+    chunks.push(chunk)
+  }
+  const image = Buffer.concat(chunks, size)
+  if (image.toString('hex', 0, 8) !== '89504e470d0a1a0a') throw new Error('百炼未返回有效的 PNG 封面。')
   return image
 }
 

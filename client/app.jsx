@@ -1,7 +1,7 @@
 import { blockKind, plainOf, splitMarkdown } from '../src/article.js'
 import { countMarkdownImages, feishuImageUrls } from '../src/markdown-images.js'
 import magentaPreview from './assets/cover-styles/magenta.webp'
-import { COVER_MODELS, COVER_RESOLUTIONS, COVER_FORMATS, MAX_COVER_COUNT } from '../src/cover-options.js'
+import { COVER_PROVIDERS, modelsFor, providerFormats, COVER_RESOLUTIONS, MAX_COVER_COUNT } from '../src/cover-options.js'
 import classicPreview from './assets/cover-styles/classic.webp'
 import editorialPreview from './assets/cover-styles/editorial.webp'
 import campaignPreview from './assets/cover-styles/campaign.webp'
@@ -713,17 +713,27 @@ function CoverOptionGroup({ label, name, options, value, onChange, disabled }) {
 }
 
 function CoverStyleDialog({ article }) {
+  const settings = useStudio(s => s.settings)
+  const [settingsStatus, setSettingsStatus] = React.useState('loading')
+  const readCoverSettings = React.useCallback(async () => {
+    setSettingsStatus('loading')
+    setSettingsStatus(await loadSettings() ? 'ready' : 'failed')
+  }, [])
+  React.useEffect(() => { void readCoverSettings() }, [readCoverSettings])
+  const provider = settingsStatus === 'ready' ? settings?.coverProvider : null
+  const formats = providerFormats(provider)
   const [style, setStyle] = React.useState(article.cover?.style ?? 'classic')
   const [resolution, setResolution] = React.useState(article.cover?.resolution ?? '2K')
   const [count, setCount] = React.useState(article.cover?.count ?? 1)
   const [format, setFormat] = React.useState(article.cover?.format ?? 'png')
   const [busy, setBusy] = React.useState(false)
+  const effectiveFormat = formats.includes(format) ? format : 'png'
   const close = () => { if (!busy) setState({ dialog: null }) }
   const submit = async event => {
     event.preventDefault()
-    if (busy) return
+    if (busy || !provider) return
     setBusy(true)
-    const ok = await act('cover/generate', { id: article.id, style, resolution, count, format })
+    const ok = await act('cover/generate', { id: article.id, style, resolution, count, format: effectiveFormat })
     setBusy(false)
     if (ok) setState({ dialog: null })
   }
@@ -755,13 +765,17 @@ function CoverStyleDialog({ article }) {
               value={resolution} onChange={setResolution} disabled={busy} />
             <CoverOptionGroup label="生成张数" name="cover-count" options={Array.from({ length: MAX_COVER_COUNT }, (_, i) => i + 1)}
               value={count} onChange={setCount} disabled={busy} />
-            <CoverOptionGroup label="图片格式" name="cover-format" options={COVER_FORMATS}
-              value={format} onChange={setFormat} disabled={busy} />
+            {provider ? <>
+              <CoverOptionGroup label="图片格式" name="cover-format" options={formats}
+                value={effectiveFormat} onChange={setFormat} disabled={busy} />
+              <p className="ws-muted ws-small">当前提供方：{COVER_PROVIDERS.find(item => item.id === provider)?.name}，在「设置 · 封面生成」里切换。</p>
+            </> : settingsStatus === 'failed' ? <p className="ws-warn ws-small" role="status">无法读取封面设置。<button type="button" className="ws-link" onClick={readCoverSettings}>重试</button></p>
+              : <p className="ws-muted ws-small" role="status">正在读取封面设置…</p>}
           </div>
         </div>
         <div className="ws-dialog-foot">
           <button type="button" className="ws-btn" disabled={busy} onClick={close}>取消</button>
-          <button type="submit" className="ws-btn is-primary" disabled={busy}>{busy ? '正在提交…' : '生成封面'}</button>
+          <button type="submit" className="ws-btn is-primary" disabled={busy || !provider}>{busy ? '正在提交…' : '生成封面'}</button>
         </div>
       </form>
     </div>
@@ -1268,6 +1282,9 @@ function SettingsDialog() {
   const [brand, setBrand] = React.useState({})
   const [arkModel, setArkModel] = React.useState(null)
   const [arkKey, setArkKey] = React.useState('')
+  const [coverProvider, setCoverProvider] = React.useState(null)
+  const [bailianModel, setBailianModel] = React.useState(null)
+  const [bailianKey, setBailianKey] = React.useState('')
   const [key, setKey] = React.useState('')
   const [endpoint, setEndpoint] = React.useState(null)
   const [fixed, setFixed] = React.useState(null)
@@ -1276,9 +1293,11 @@ function SettingsDialog() {
   React.useEffect(() => { loadSettings() }, [])
   const close = () => setState({ dialog: null })
   if (!settings) return <div className="ws-scrim"><div className="ws-dialog"><span className="ws-shimmer">正在读取设置…</span></div></div>
+  const providerValue = coverProvider ?? settings.coverProvider
+  const isBailian = providerValue === 'bailian'
   const pages = [
     { id: 'brand', title: '公众号品牌', icon: 'doc', description: '设置开头横幅和文末关注卡的品牌文案。' },
-    { id: 'cover', title: '封面生成', icon: 'spark', description: '配置火山方舟的生图模型和凭证。', ready: settings.arkKeySet, link: 'https://ark.volcengine.com/region:cn-beijing/apikey', linkLabel: '火山方舟 API Key' },
+    { id: 'cover', title: '封面生成', icon: 'spark', description: isBailian ? '配置阿里云百炼的生图模型和凭证。' : '配置火山方舟的生图模型和凭证。', ready: isBailian ? settings.bailianKeySet : settings.arkKeySet, link: isBailian ? 'https://bailian.console.aliyun.com/cn-beijing/model/settings/api-key' : 'https://ark.volcengine.com/region:cn-beijing/apikey', linkLabel: isBailian ? '阿里云百炼 API Key' : '火山方舟 API Key' },
     { id: 'storage', title: '图片图床', icon: 'upload', description: '将飞书图片自动转存到 Cloudinary，供排版预览使用。', ready: Boolean(settings.cloudinary?.cloudName && settings.cloudinary?.apiKey && settings.cloudinary?.apiSecretSet), link: 'https://console.cloudinary.com/settings/api-keys', linkLabel: 'Cloudinary API Keys' },
     { id: 'quality', title: '朱雀质检', icon: 'scan', description: '管理检测凭证和需要排除的固定文案。', ready: settings.zhuqueKeySet, link: 'https://console.cloud.tencent.com/edgeone', linkLabel: 'EdgeOne 控制台' },
   ]
@@ -1288,8 +1307,11 @@ function SettingsDialog() {
   const patch = () => {
     const out = { zhuqueEndpoint: endpointValue, fixedLines: fixedValue.split('\n') }
     out.brand = brand
+    out.coverProvider = providerValue
     out.arkModel = arkModel ?? settings.arkModel
+    out.bailianModel = bailianModel ?? settings.bailianModel
     if (arkKey.trim()) out.arkKey = arkKey.trim()
+    if (bailianKey.trim()) out.bailianKey = bailianKey.trim()
     if (key.trim()) out.zhuqueKey = key.trim()
     out.cloudinary = { ...cloudinary }
     if (out.cloudinary.apiSecret === '') delete out.cloudinary.apiSecret
@@ -1344,15 +1366,23 @@ function SettingsDialog() {
               <p className="ws-muted ws-small">用于开头横幅和文末关注卡。清空并保存可恢复默认文案。</p>
             </fieldset>
             <fieldset className="ws-group ws-settings-fields" hidden={page !== 'cover'}>
+              <label className="ws-field"><span>封面提供方</span>
+                <select value={providerValue} onChange={e => setCoverProvider(e.target.value)}>
+                  {COVER_PROVIDERS.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+                </select>
+              </label>
               <label className="ws-field"><span>图片模型</span>
-                <select value={arkModel ?? settings.arkModel} onChange={e => setArkModel(e.target.value)}>
-                  {COVER_MODELS.map(model => <option key={model.id} value={model.id}>{model.name}</option>)}
+                <select value={isBailian ? bailianModel ?? settings.bailianModel : arkModel ?? settings.arkModel}
+                  onChange={e => (isBailian ? setBailianModel(e.target.value) : setArkModel(e.target.value))}>
+                  {modelsFor(providerValue).map(model => <option key={model.id} value={model.id}>{model.name}</option>)}
                 </select>
               </label>
               <label className="ws-field"><span>API Key</span>
-                <input type="password" autoComplete="off" value={arkKey} onChange={e => setArkKey(e.target.value)}
-                  placeholder={settings.arkKeySet ? '已保存，留空表示不改' : '输入火山方舟 API Key'} />
+                <input type="password" autoComplete="off" value={isBailian ? bailianKey : arkKey}
+                  onChange={e => (isBailian ? setBailianKey(e.target.value) : setArkKey(e.target.value))}
+                  placeholder={(isBailian ? settings.bailianKeySet : settings.arkKeySet) ? '已保存，留空表示不改' : isBailian ? '输入阿里云百炼 API Key' : '输入火山方舟 API Key'} />
               </label>
+              {isBailian ? <p className="ws-muted ws-small">当前仅支持中国内地（北京）的百炼 API Key，图片格式为 PNG。</p> : null}
             </fieldset>
             <fieldset className="ws-group ws-settings-fields" hidden={page !== 'storage'}>
               {['cloudName', 'apiKey', 'apiSecret'].map((field, index) => (

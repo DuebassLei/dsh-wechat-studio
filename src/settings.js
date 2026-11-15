@@ -1,4 +1,4 @@
-import { COVER_MODELS } from './cover-options.js'
+import { COVER_PROVIDERS, modelsFor } from './cover-options.js'
 // 设置：存在 <DSH_HOME>/wechat-studio/settings.json（权限 600）。
 // 朱雀 API Key 只留在本机，接口从不把明文返回给页面，只说「有没有」和末四位。
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
@@ -30,8 +30,11 @@ export async function readSettings(root) {
       author: brandField(saved.brand?.author, 32) || DEFAULT_BRAND.author,
       slogan: brandField(saved.brand?.slogan, 80) || DEFAULT_BRAND.slogan,
     },
-    arkModel: COVER_MODELS.find(model => model.id === saved.arkModel)?.id ?? COVER_MODELS[0].id,
+    arkModel: modelsFor('ark').find(model => model.id === saved.arkModel)?.id ?? modelsFor('ark')[0].id,
     arkKey: typeof saved.arkKey === 'string' ? saved.arkKey : '',
+    coverProvider: COVER_PROVIDERS.some(provider => provider.id === saved.coverProvider) ? saved.coverProvider : 'ark',
+    bailianModel: modelsFor('bailian').find(model => model.id === saved.bailianModel)?.id ?? modelsFor('bailian')[0].id,
+    bailianKey: typeof saved.bailianKey === 'string' ? saved.bailianKey : '',
     cloudinary: {
       cloudName: typeof saved.cloudinary?.cloudName === 'string' ? saved.cloudinary.cloudName : '',
       apiKey: typeof saved.cloudinary?.apiKey === 'string' ? saved.cloudinary.apiKey : '',
@@ -61,12 +64,25 @@ export async function updateSettings(root, body) {
     if (typeof body.brand.slogan === 'string') next.brand.slogan = brandField(body.brand.slogan, 80) || DEFAULT_BRAND.slogan
   }
   if (body.arkModel !== undefined) {
-    if (!COVER_MODELS.some(model => model.id === body.arkModel)) {
+    if (!modelsFor('ark').some(model => model.id === body.arkModel)) {
       throw Object.assign(new Error('请选择支持的封面模型。'), { status: 400 })
     }
     next.arkModel = body.arkModel
   }
   if (typeof body.arkKey === 'string') next.arkKey = body.arkKey.trim().slice(0, 400)
+  if (body.coverProvider !== undefined) {
+    if (!COVER_PROVIDERS.some(provider => provider.id === body.coverProvider)) {
+      throw Object.assign(new Error('请选择支持的封面提供方。'), { status: 400 })
+    }
+    next.coverProvider = body.coverProvider
+  }
+  if (body.bailianModel !== undefined) {
+    if (!modelsFor('bailian').some(model => model.id === body.bailianModel)) {
+      throw Object.assign(new Error('请选择支持的百炼封面模型。'), { status: 400 })
+    }
+    next.bailianModel = body.bailianModel
+  }
+  if (typeof body.bailianKey === 'string') next.bailianKey = body.bailianKey.trim().slice(0, 400)
   if (body.cloudinary && typeof body.cloudinary === 'object') {
     for (const field of ['cloudName', 'apiKey', 'apiSecret']) {
       if (typeof body.cloudinary[field] === 'string') next.cloudinary[field] = body.cloudinary[field].trim().slice(0, 400)
@@ -97,6 +113,9 @@ export function publicSettings(settings) {
     brand: settings.brand,
     arkModel: settings.arkModel,
     arkKeySet: Boolean(settings.arkKey),
+    coverProvider: settings.coverProvider,
+    bailianModel: settings.bailianModel,
+    bailianKeySet: Boolean(settings.bailianKey),
     cloudinary: {
       cloudName: settings.cloudinary?.cloudName ?? '',
       apiKey: settings.cloudinary?.apiKey ?? '',

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { COVER_RESOLUTIONS, COVER_FORMATS, MAX_COVER_COUNT } from './cover-options.js'
+import { COVER_RESOLUTIONS, COVER_FORMATS, MAX_COVER_COUNT, providerFormats } from './cover-options.js'
 // dsh-wechat-studio host 半片：/wechat-studio/* 接口。
 import { join } from 'node:path'
 import { defaultSelection, listModels, modelInfo, modelOverride, modelStatus, setModelOverride, skillSources } from './ai.js'
@@ -7,7 +7,7 @@ import { BANNER_CHOICES, BANNER_STYLES, DEFAULT_BANNER } from './banner.js'
 import { blockKind, createArticle, fixPlan, HOOK_IDS, isCheckable, listMeta, newId, revisionChanges, snapshot, splitMarkdown, toMarkdown, touch, undo } from './article.js'
 import { transferFeishuImages } from './cloudinary.js'
 import { feishuImageUrls, replaceFeishuImages } from './markdown-images.js'
-import { coverPrompt, generateArkCover, readCover, saveCover } from './cover.js'
+import { coverPrompt, generateArkCover, generateBailianCover, readCover, saveCover } from './cover.js'
 import { COVER_STYLES } from './cover-styles.js'
 import { STYLES, THEMES, detectionText, renderLayout } from './layout.js'
 import { applyRule, buildInsights, EXPERIMENT_RESULTS, importData, INSIGHTS_EMPTY, previewRule } from './insights.js'
@@ -100,7 +100,8 @@ function startCover(deps, article, apiKey, options) {
         Object.assign(job, { stage: 'generating', index })
         let id
         try {
-          const image = await generateArkCover(prompt, { ...options, apiKey }, fetchImpl)
+          const generate = options.provider === 'bailian' ? generateBailianCover : generateArkCover
+          const image = await generate(prompt, { ...options, apiKey }, fetchImpl)
           job.stage = 'saving'
           id = await saveCover(store.root, image, options.format)
         } catch (err) {
@@ -382,14 +383,14 @@ export async function route(deps, req, res) {
         const runs = coverRuns(article)
         const run = runs.find(entry => entry.images.some(image => image.id === body.asset))
         if (!run) throw Object.assign(new Error('这篇文章没有这张封面。'), { status: 404 })
-        const { title, prompt, style, model, createdAt, resolution, count, format } = run
+        const { title, prompt, style, model, createdAt, resolution, count, format, provider } = run
         try {
           await readCover(store.root, body.asset, format)
         } catch {
           throw Object.assign(new Error('封面文件不存在。'), { status: 404 })
         }
         article.coverRuns = runs
-        article.cover = { id: body.asset, title, prompt, style, model, createdAt, resolution, count, format }
+        article.cover = { id: body.asset, title, prompt, style, model, createdAt, resolution, count, format, provider }
         touch(article)
       })
       return ok()
@@ -404,9 +405,13 @@ export async function route(deps, req, res) {
           !Number.isInteger(count) || count < 1 || count > MAX_COVER_COUNT) {
         return json(res, 400, { error: '请选择有效的分辨率、格式和生成张数（1 至 4）。' })
       }
-      const { arkKey, arkModel } = await readSettings(store.root)
-      if (!arkKey) return json(res, 400, { error: '请先在设置中填写火山方舟 API Key。' })
-      startCover(deps, article, arkKey, { style, resolution, count, format, model: arkModel })
+      const settings = await readSettings(store.root)
+      const provider = settings.coverProvider
+      if (!providerFormats(provider).includes(format)) return json(res, 400, { error: '当前封面提供方只支持 png 格式。' })
+      const apiKey = provider === 'bailian' ? settings.bailianKey : settings.arkKey
+      const model = provider === 'bailian' ? settings.bailianModel : settings.arkModel
+      if (!apiKey) return json(res, 400, { error: provider === 'bailian' ? '请先在设置中填写阿里云百炼 API Key。' : '请先在设置中填写火山方舟 API Key。' })
+      startCover(deps, article, apiKey, { style, resolution, count, format, model, provider })
       return ok()
     }
     case 'images/retry': {

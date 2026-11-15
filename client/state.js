@@ -170,8 +170,10 @@ export async function loadSkills() {
 export async function loadSettings() {
   try {
     setState({ settings: await request('settings') })
+    return true
   } catch (err) {
     toast(err.message, true)
+    return false
   }
 }
 

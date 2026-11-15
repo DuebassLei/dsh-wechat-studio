@@ -1623,8 +1623,8 @@ function PaperModule({ data }) {
       <header className="ws-top" data-window-drag="">
         <nav className="ws-crumb" aria-label="当前位置"><button type="button" className="ws-link" onClick={() => setState({ paperHome: true })}>稿面</button><span aria-hidden="true">/</span><Switcher data={data} /></nav>
         <Steps article={article} flagged={flagged} retest={retest} />
-        {view === 'paper' && article.blocks.length ? <PaperNavigation key={article.id} article={article} target={reviewTarget} onJump={jumpToReview} /> : null}
-        <UnsavedParagraphs key={article.id} article={article} />
+        {view === 'paper' && article.blocks.length ? <PaperNavigation key={`navigation:${article.id}`} article={article} target={reviewTarget} onJump={jumpToReview} /> : null}
+        <UnsavedParagraphs key={`unsaved:${article.id}`} article={article} />
         <span className="ws-grow" />
         <div className="ws-tabs" role="tablist" aria-label="视图">
           <button type="button" role="tab" aria-selected={view === 'paper'} className={view === 'paper' ? 'is-on' : ''} onClick={() => openArticleView(article, 'paper')}>稿面</button>

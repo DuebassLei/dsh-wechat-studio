@@ -102,6 +102,9 @@ body[data-ds-dark-theme] .ws-root { color-scheme: dark; --ok: #6fcb9c; --bad: #f
 .ws-stepper li { display: flex; align-items: center; gap: 5px; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--ink2); }
 .ws-stepper li.is-done { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 35%, transparent); }
 .ws-stepper li.is-now { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+.ws-stepper li:has(> button) { padding: 0; }
+.ws-stepper li > button { display: flex; align-items: center; gap: 5px; padding: 2px 10px; border-radius: inherit; color: inherit; }
+.ws-stepper li > button:hover { background: var(--hover); }
 .ws-stepper small { font-size: 11px; font-weight: 400; }
 .ws-tabs { display: flex; padding: 3px; gap: 2px; border-radius: 10px; background: var(--hover); }
 .ws-tabs button { min-height: 30px; padding: 0 14px; border-radius: 8px; font-size: 13px; color: var(--ink2); }
@@ -239,7 +242,14 @@ body[data-ds-dark-theme] .ws-root { color-scheme: dark; --ok: #6fcb9c; --bad: #f
 .ws-note-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 
 /* 右栏 */
-.ws-side { display: flex; flex-direction: column; gap: 20px; min-height: 0; overflow: auto; padding: 16px 14px; background: var(--panel); border-left: 1px solid var(--line); }
+.ws-side { display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--panel); border-left: 1px solid var(--line); }
+.ws-side-tabs { flex: none; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.ws-side-tabs button { display: flex; flex: 1; justify-content: center; align-items: center; gap: 5px; padding-inline: 6px; white-space: nowrap; }
+.ws-side-count { padding: 0 5px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 11px; font-variant-numeric: tabular-nums; }
+.ws-side-content:not([hidden]) { display: flex; flex-direction: column; gap: 16px; flex: 1; min-height: 0; overflow: auto; padding: 14px; }
+.ws-side-content > * { flex: none; }
+.ws-side-title { font-weight: 650; line-height: 1.5; overflow-wrap: anywhere; }
+.ws-side-candidates, .ws-side-placeholder { padding-top: 12px; border-top: 1px solid var(--line); }
 .ws-sec { display: flex; flex-direction: column; gap: 8px; }
 .ws-sec-head { display: flex; align-items: center; justify-content: space-between; }
 .ws-choice { min-height: 40px; padding: 8px 11px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--card); overflow-wrap: anywhere; }
@@ -255,7 +265,6 @@ body[data-ds-dark-theme] .ws-root { color-scheme: dark; --ok: #6fcb9c; --bad: #f
 .ws-drop { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 64px; padding: 10px; border: 1px dashed var(--line); border-radius: var(--r-md); background: var(--card); font-size: 13px; color: var(--ink2); text-align: center; }
 .ws-drop:hover:not(:disabled), .ws-drop.is-over { border-color: var(--accent); color: var(--accent); }
 .ws-overall { display: flex; gap: 12px; font-size: 12px; font-variant-numeric: tabular-nums; }
-.ws-side-foot { margin-top: auto; display: flex; flex-direction: column; gap: 8px; }
 
 /* 排版预览 */
 .ws-bannerbar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 8px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
@@ -344,6 +353,7 @@ body[data-ds-dark-theme] .ws-root { color-scheme: dark; --ok: #6fcb9c; --bad: #f
   .ws-chat { order: 3; border-right: 0; border-top: 1px solid var(--line); max-height: 420px; }
   .ws-body:has(.ws-layout) .ws-chat { display: none; }
   .ws-side { border-left: 0; border-top: 1px solid var(--line); overflow: visible; }
+  .ws-side-content:not([hidden]) { overflow: visible; }
   .ws-main { overflow: visible; }
   .ws-body:has(.ws-layout) .ws-main { overflow: auto; min-height: 70vh; }
   .ws-stepper { display: none; }

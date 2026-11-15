@@ -927,7 +927,44 @@ function openArticleView(article, view) {
   void rememberArticleView(article.id, view)
 }
 
-function SidePane({ article, flagged, ready, reviewTarget, onReviewJump }) {
+function ArticleInfoPane({ article }) {
+  const busy = Boolean(article.job)
+  const generating = article.job?.kind === 'titles'
+  const [showTitles, setShowTitles] = React.useState(false)
+  return <section className="ws-sec">
+    <div className="ws-sec-head">
+      <h2 className="ws-pane-title">当前标题</h2>
+      {article.title ? <button type="button" className="ws-link" aria-expanded={showTitles} onClick={() => setShowTitles(open => !open)}>
+        {showTitles ? '收起候选' : '换标题'}
+      </button> : null}
+    </div>
+    <p className="ws-side-title">{article.title || '还没有标题'}</p>
+    {article.summary ? <p className="ws-summary"><span>摘要</span>{article.summary}</p> : null}
+    {showTitles || !article.title ? <div className="ws-sec ws-side-candidates">
+      <div className="ws-sec-head">
+        <h3 className="ws-pane-title">标题候选</h3>
+        <button type="button" className="ws-link" disabled={busy || !article.blocks.length} onClick={() => act('titles/regen')}>
+          {article.titles.length ? '重新出' : '出标题'}
+        </button>
+      </div>
+      {generating ? <p className="ws-shimmer">正在出标题…</p> : null}
+      {article.titles.map(item => (
+        <button type="button" key={item.text} className={`ws-choice ws-title-choice ${item.recommended ? 'is-recommended' : ''} ${item.text === article.title ? 'is-on' : ''}`}
+          aria-pressed={item.text === article.title} disabled={busy} onClick={async () => { if (await act('title/pick', { text: item.text })) setShowTitles(false) }}>
+          {item.recommended ? <span className="ws-title-recommendation"><Icon name="spark" size={13} />主推</span> : null}
+          <span>{item.text}</span>
+          {item.recommended && item.reason ? <small>{item.reason}</small> : null}
+        </button>
+      ))}
+    </div> : null}
+    <details className="ws-manual">
+      <summary>更多操作</summary>
+      <button type="button" className="ws-btn" disabled={!article.blocks.length} onClick={copyMarkdown}>复制 Markdown</button>
+    </details>
+  </section>
+}
+
+function QualityPane({ article, ready, reviewTarget, onReviewJump }) {
   const fileRef = React.useRef(null)
   const [over, setOver] = React.useState(false)
   const busy = Boolean(article.job)
@@ -939,62 +976,70 @@ function SidePane({ article, flagged, ready, reviewTarget, onReviewJump }) {
     if (!busy) uploadReport(event.dataTransfer.files?.[0])
   }
   return (
-    <aside className="ws-side" aria-label="标题与质检">
-      <section className="ws-sec">
-        <div className="ws-sec-head">
-          <h2 className="ws-pane-title">标题候选</h2>
-          <button type="button" className="ws-link" disabled={busy || !article.blocks.length} onClick={() => act('titles/regen')}>{article.titles.length ? '重新出' : '出标题'}</button>
-        </div>
-        {article.job?.kind === 'titles' ? <p className="ws-shimmer">正在出标题…</p> : null}
-        {article.titles.map(item => (
-          <button type="button" key={item.text} className={`ws-choice ws-title-choice ${item.recommended ? 'is-recommended' : ''} ${item.text === article.title ? 'is-on' : ''}`}
-            aria-pressed={item.text === article.title} onClick={() => act('title/pick', { text: item.text })}>
-            {item.recommended ? <span className="ws-title-recommendation"><Icon name="spark" size={13} />主推</span> : null}
-            <span>{item.text}</span>
-            {item.recommended && item.reason ? <small>{item.reason}</small> : null}
-          </button>
-        ))}
-        {article.summary ? <p className="ws-summary"><span>摘要</span>{article.summary}</p> : null}
-      </section>
-
-      <CoverPane article={article} />
-
-      <section className="ws-sec">
-        <h2 className="ws-pane-title">朱雀质检{zhuque.round ? <span className="ws-round">第 {zhuque.round} 轮</span> : null}</h2>
-        {ready ? (
-          <button type="button" className="ws-btn is-primary is-wide" disabled={busy || !article.blocks.length} onClick={() => act('zhuque/detect')}>
-            <Icon name="scan" />{article.job?.kind === 'report' ? '正在检测…' : zhuque.round ? '再检测一轮' : '一键检测'}
-          </button>
-        ) : (
-          <p className="ws-hint">设置朱雀 API Key 后可以一键检测，不用来回复制和下载。<button type="button" className="ws-link" onClick={() => setState({ dialog: 'settings' })}>去设置</button></p>
-        )}
-        {overall?.length ? <p className="ws-overall">{overall.map(([name, value]) => <span key={name}>{name} {value}%</span>)}</p> : null}
-        <FixAll article={article} />
-        <ReviewQueue article={article} target={reviewTarget} onJump={onReviewJump} />
-        <details className="ws-manual" open={!ready}>
-          <summary>手动上传报告</summary>
-          <ol className="ws-steps">
-            <li><button type="button" className="ws-btn is-wide" disabled={!article.blocks.length} onClick={copyDetectionText}><Icon name="doc" />复制检测文本</button></li>
-            <li className="ws-muted">到朱雀贴进去检测，下载报告 PDF</li>
-            <li>
-              <button type="button" className={`ws-drop ${over ? 'is-over' : ''}`} disabled={busy || !article.blocks.length}
-                onClick={() => fileRef.current?.click()} onDragOver={e => { e.preventDefault(); setOver(true) }} onDragLeave={() => setOver(false)} onDrop={drop}>
-                <Icon name="upload" />把报告 PDF 拖到这里，或点击选择
-              </button>
-              <input ref={fileRef} type="file" accept="application/pdf,.pdf" hidden onChange={e => { uploadReport(e.target.files?.[0]); e.target.value = '' }} />
-            </li>
-          </ol>
-        </details>
-        <p className="ws-muted ws-small">不保证具体分数，结果以朱雀为准。</p>
-      </section>
-
-      <div className="ws-side-foot">
-        {flagged ? <p className="ws-warn">还有 {flagged} 段没处理</p> : null}
-        <button type="button" className="ws-btn is-primary is-big" disabled={!article.blocks.length} onClick={() => openArticleView(article, 'layout')}>去排版</button>
-        <button type="button" className="ws-btn is-wide" disabled={!article.blocks.length} onClick={copyMarkdown}>复制 Markdown</button>
-      </div>
-    </aside>
+    <section className="ws-sec">
+      <h2 className="ws-pane-title">朱雀质检{zhuque.round ? <span className="ws-round">第 {zhuque.round} 轮</span> : null}</h2>
+      {ready ? (
+        <button type="button" className="ws-btn is-primary is-wide" disabled={busy || !article.blocks.length} onClick={() => act('zhuque/detect')}>
+          <Icon name="scan" />{article.job?.kind === 'report' ? '正在检测…' : zhuque.round ? '再检测一轮' : '一键检测'}
+        </button>
+      ) : (
+        <p className="ws-hint">设置朱雀 API Key 后可以一键检测，不用来回复制和下载。<button type="button" className="ws-link" onClick={() => setState({ dialog: 'settings' })}>去设置</button></p>
+      )}
+      {overall?.length ? <p className="ws-overall">{overall.map(([name, value]) => <span key={name}>{name} {value}%</span>)}</p> : null}
+      <FixAll article={article} />
+      <ReviewQueue article={article} target={reviewTarget} onJump={id => onReviewJump(id, true)} />
+      <details className="ws-manual" open={!ready}>
+        <summary>{ready ? '更多检测方式 · 上传 PDF' : '手动上传报告'}</summary>
+        <ol className="ws-steps">
+          <li><button type="button" className="ws-btn is-wide" disabled={!article.blocks.length} onClick={copyDetectionText}><Icon name="doc" />复制检测文本</button></li>
+          <li className="ws-muted">到朱雀贴进去检测，下载报告 PDF</li>
+          <li>
+            <button type="button" className={`ws-drop ${over ? 'is-over' : ''}`} disabled={busy || !article.blocks.length}
+              onClick={() => fileRef.current?.click()} onDragOver={e => { e.preventDefault(); setOver(true) }} onDragLeave={() => setOver(false)} onDrop={drop}>
+              <Icon name="upload" />把报告 PDF 拖到这里，或点击选择
+            </button>
+            <input ref={fileRef} type="file" accept="application/pdf,.pdf" hidden onChange={e => { uploadReport(e.target.files?.[0]); e.target.value = '' }} />
+          </li>
+        </ol>
+      </details>
+      <p className="ws-muted ws-small">不保证具体分数，结果以朱雀为准。</p>
+    </section>
   )
+}
+
+const SIDE_TABS = [['article', '文章'], ['images', '配图'], ['quality', '质检']]
+
+function SidePane({ article, tab, onTab, tabId, flagged, retest, ready, reviewTarget, onReviewJump }) {
+  const pendingCount = flagged + retest
+  return <aside className="ws-side" aria-label="稿面工具">
+    <div className="ws-side-tabs">
+      <div className="ws-tabs" role="tablist" aria-label="稿面工具">
+        {SIDE_TABS.map(([id, label], index) => <button key={id} type="button" role="tab" id={tabId + '-' + id}
+          aria-controls={tabId + '-panel-' + id} aria-selected={tab === id} tabIndex={tab === id ? 0 : -1}
+          className={tab === id ? 'is-on' : ''} onClick={() => onTab(id)} onKeyDown={event => {
+            const count = SIDE_TABS.length
+            const next = { ArrowLeft: (index + count - 1) % count, ArrowRight: (index + 1) % count, Home: 0, End: count - 1 }[event.key]
+            if (next == null) return
+            event.preventDefault()
+            const nextId = SIDE_TABS[next][0]
+            onTab(nextId)
+            document.getElementById(tabId + '-' + nextId)?.focus()
+          }}>
+          {label}{id === 'quality' && pendingCount ? <span className="ws-side-count">{pendingCount}</span> : null}
+        </button>)}
+      </div>
+    </div>
+    {SIDE_TABS.map(([id]) => <div key={id} role="tabpanel" id={tabId + '-panel-' + id}
+      aria-labelledby={tabId + '-' + id} className="ws-side-content" hidden={tab !== id} tabIndex={0}>
+      {id === 'article' ? <ArticleInfoPane article={article} /> : id === 'images' ? <>
+        <CoverPane article={article} />
+        <section className="ws-sec ws-side-placeholder">
+          <h2 className="ws-pane-title">正文插图</h2>
+          <p className="ws-muted ws-small">正文插图建议将在这里显示。</p>
+        </section>
+      </> : <QualityPane article={article} ready={ready} reviewTarget={reviewTarget} onReviewJump={onReviewJump} />}
+    </div>)}
+  </aside>
 }
 
 const draftDate = new Intl.DateTimeFormat('zh-CN', {
@@ -1072,7 +1117,7 @@ function Switcher({ data }) {
   )
 }
 
-function Steps({ article, flagged, retest }) {
+function Steps({ article, flagged, retest, onQuality }) {
   const round = article.zhuque?.round ?? 0
   const steps = [
     { label: '正文', state: article.blocks.length ? 'done' : article.job?.kind === 'draft' ? 'now' : 'todo' },
@@ -1081,7 +1126,12 @@ function Steps({ article, flagged, retest }) {
   ]
   return (
     <ol className="ws-stepper">
-      {steps.map(step => <li key={step.label} className={`is-${step.state}`}>{step.state === 'done' ? <Icon name="check" size={13} /> : null}{step.label}{step.extra ? <small>{step.extra}</small> : null}</li>)}
+      {steps.map(step => {
+        const content = <>{step.state === 'done' ? <Icon name="check" size={13} /> : null}{step.label}{step.extra ? <small>{step.extra}</small> : null}</>
+        return <li key={step.label} className={`is-${step.state}`}>
+          {step.label === '质检' ? <button type="button" onClick={onQuality}>{content}</button> : content}
+        </li>
+      })}
     </ol>
   )
 }
@@ -1607,8 +1657,17 @@ function PaperModule({ data }) {
   const view = useStudio(s => s.view)
   const chatOpen = useStudio(s => s.chatOpen)
   const [review, setReview] = React.useState(null)
+  const [side, setSide] = React.useState(null)
+  const sideTabId = React.useId()
   const article = data.current
   if (!article) return <Empty model={data.model} />
+  const sideTab = side?.articleId === article.id ? side.tab : 'article'
+  const selectSideTab = tab => setSide({ articleId: article.id, tab })
+  const openQuality = () => {
+    if (view !== 'paper') openArticleView(article, 'paper')
+    selectSideTab('quality')
+    requestAnimationFrame(() => document.getElementById(sideTabId + '-quality')?.focus())
+  }
   const reviewTarget = review?.articleId === article.id ? review.blockId : null
   const jumpToReview = (blockId, focus = false) => {
     setReview({ articleId: article.id, blockId })
@@ -1622,7 +1681,7 @@ function PaperModule({ data }) {
     <>
       <header className="ws-top" data-window-drag="">
         <nav className="ws-crumb" aria-label="当前位置"><button type="button" className="ws-link" onClick={() => setState({ paperHome: true })}>稿面</button><span aria-hidden="true">/</span><Switcher data={data} /></nav>
-        <Steps article={article} flagged={flagged} retest={retest} />
+        <Steps article={article} flagged={flagged} retest={retest} onQuality={openQuality} />
         {view === 'paper' && article.blocks.length ? <PaperNavigation key={`navigation:${article.id}`} article={article} target={reviewTarget} onJump={jumpToReview} /> : null}
         <UnsavedParagraphs key={`unsaved:${article.id}`} article={article} />
         <span className="ws-grow" />
@@ -1663,7 +1722,7 @@ function PaperModule({ data }) {
       <div className={`ws-body ${chatOpen && view !== 'layout' ? '' : 'no-chat'}`}>
         {chatOpen && view !== 'layout' ? <ChatPane article={article} /> : null}
         <main className="ws-main">{view === 'layout' ? <LayoutView article={article} /> : <Paper article={article} reviewTarget={reviewTarget} />}</main>
-        {view === 'paper' ? <SidePane article={article} flagged={flagged} ready={data.zhuqueReady} reviewTarget={reviewTarget} onReviewJump={jumpToReview} /> : null}
+        {view === 'paper' ? <SidePane key={article.id} article={article} tab={sideTab} onTab={selectSideTab} tabId={sideTabId} flagged={flagged} retest={retest} ready={data.zhuqueReady} reviewTarget={reviewTarget} onReviewJump={jumpToReview} /> : null}
       </div>
     </>
   )

@@ -30,6 +30,8 @@ const weekdayName = date => WEEKDAYS[(date.getDay() + 6) % 7]
 const atOn = (key, hour, minute = 0) => { const d = parseDay(key); d.setHours(hour, minute, 0, 0); return d.toISOString() }
 const timeLabel = iso => { const d = new Date(iso); return `${pad(d.getHours())}:${pad(d.getMinutes())}` }
 const slotOf = iso => { const d = new Date(iso); return SLOTS.find(s => s.hour === d.getHours() && d.getMinutes() === 0) ?? SLOTS[3] }
+// 已发卡片落回排期日：补记历史稿件时不会全挤到标记当天；没排期的才落标记日
+const pubSlot = draft => draft.scheduledFor ?? draft.publishedAt
 const coverUrl = draft => `wechat-studio/cover/image?${new URLSearchParams({ id: draft.id, asset: draft.coverId })}`
 
 async function openDraft(draft, view) {
@@ -104,7 +106,7 @@ function PublishedCard({ draft }) {
   return (
     <article className="ws-sched-entry is-published">
       <div className="ws-sched-entry-head">
-        <span className="ws-sched-time">{timeLabel(draft.publishedAt)}</span>
+        <span className="ws-sched-time">{timeLabel(pubSlot(draft))}</span>
         <span className="ws-sched-published-tag"><Icon name="check" size={12} />已发</span>
       </div>
       <button type="button" className="ws-sched-entry-title" onClick={() => openDraft(draft)}>{draft.title}</button>
@@ -278,10 +280,10 @@ export function ScheduleView({ data }) {
   const published = active.filter(a => a.publishedAt)
   const weekStart = dayKey(days[0])
   const weekEnd = dayKey(days[6])
-  const weekPublished = published.filter(a => { const k = dayKey(new Date(a.publishedAt)); return k >= weekStart && k <= weekEnd }).length
+  const weekPublished = published.filter(a => { const k = dayKey(new Date(pubSlot(a))); return k >= weekStart && k <= weekEnd }).length
   const byDay = key => ({
     scheduled: scheduled.filter(a => dayKey(new Date(a.scheduledFor)) === key).sort((a, b) => a.scheduledFor.localeCompare(b.scheduledFor)),
-    published: published.filter(a => dayKey(new Date(a.publishedAt)) === key).sort((a, b) => a.publishedAt.localeCompare(b.publishedAt)),
+    published: published.filter(a => dayKey(new Date(pubSlot(a))) === key).sort((a, b) => pubSlot(a).localeCompare(pubSlot(b))),
   })
   const dragStart = (e, draft) => { e.dataTransfer.setData('text/plain', draft.id); e.dataTransfer.effectAllowed = 'move' }
   const dropOnDay = async (id, key) => {

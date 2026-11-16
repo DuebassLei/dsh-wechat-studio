@@ -694,7 +694,7 @@ export async function route(deps, req, res) {
       const apiKey = provider === 'bailian' ? settings.bailianKey : settings.arkKey
       const model = provider === 'bailian' ? settings.bailianModel : settings.arkModel
       if (!apiKey) return json(res, 400, { error: provider === 'bailian' ? '请先在设置中填写阿里云百炼 API Key。' : '请先在设置中填写火山方舟 API Key。' })
-      startCover(deps, article, apiKey, { style, resolution, count, format, model, provider })
+      startCover(deps, article, apiKey, { style, resolution, count, format, model, provider, referenceImage: settings.portraitUrl || null })
       return ok()
     }
     case 'images/retry': {

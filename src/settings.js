@@ -13,6 +13,8 @@ const DEFAULT_BRAND = {
   slogan: '我是林月半子，教你用AI干掉90%的重复劳动',
 }
 
+const DEFAULT_PORTRAIT = 'https://r2.cloudnative101.net/assets/images/portrait.png'
+
 const brandField = (value, limit) => typeof value === 'string' ? value.trim().slice(0, limit) : ''
 
 const lines = value => (Array.isArray(value) ? value.filter(v => typeof v === 'string').map(v => v.trim()).filter(Boolean).slice(0, 20) : null)
@@ -35,6 +37,7 @@ export async function readSettings(root) {
     coverProvider: COVER_PROVIDERS.some(provider => provider.id === saved.coverProvider) ? saved.coverProvider : 'ark',
     bailianModel: modelsFor('bailian').find(model => model.id === saved.bailianModel)?.id ?? modelsFor('bailian')[0].id,
     bailianKey: typeof saved.bailianKey === 'string' ? saved.bailianKey : '',
+    portraitUrl: typeof saved.portraitUrl === 'string' ? saved.portraitUrl : DEFAULT_PORTRAIT,
     cloudinary: {
       cloudName: typeof saved.cloudinary?.cloudName === 'string' ? saved.cloudinary.cloudName : '',
       apiKey: typeof saved.cloudinary?.apiKey === 'string' ? saved.cloudinary.apiKey : '',
@@ -83,6 +86,14 @@ export async function updateSettings(root, body) {
     next.bailianModel = body.bailianModel
   }
   if (typeof body.bailianKey === 'string') next.bailianKey = body.bailianKey.trim().slice(0, 400)
+  if (typeof body.portraitUrl === 'string') {
+    const value = body.portraitUrl.trim().slice(0, 2000)
+    const url = value ? (URL.canParse(value) ? new URL(value) : null) : null
+    if (value && (url?.protocol !== 'https:' || url.username || url.password)) {
+      throw Object.assign(new Error('IP 人物参考图需要是不带账号密码的 https 图片地址。'), { status: 400 })
+    }
+    next.portraitUrl = value
+  }
   if (body.cloudinary && typeof body.cloudinary === 'object') {
     for (const field of ['cloudName', 'apiKey', 'apiSecret']) {
       if (typeof body.cloudinary[field] === 'string') next.cloudinary[field] = body.cloudinary[field].trim().slice(0, 400)
@@ -116,6 +127,7 @@ export function publicSettings(settings) {
     coverProvider: settings.coverProvider,
     bailianModel: settings.bailianModel,
     bailianKeySet: Boolean(settings.bailianKey),
+    portraitUrl: settings.portraitUrl,
     cloudinary: {
       cloudName: settings.cloudinary?.cloudName ?? '',
       apiKey: settings.cloudinary?.apiKey ?? '',

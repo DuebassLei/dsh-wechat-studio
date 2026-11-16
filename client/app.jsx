@@ -1338,6 +1338,7 @@ function SettingsDialog() {
   const [coverProvider, setCoverProvider] = React.useState(null)
   const [bailianModel, setBailianModel] = React.useState(null)
   const [bailianKey, setBailianKey] = React.useState('')
+  const [portraitUrl, setPortraitUrl] = React.useState(null)
   const [key, setKey] = React.useState('')
   const [endpoint, setEndpoint] = React.useState(null)
   const [fixed, setFixed] = React.useState(null)
@@ -1363,6 +1364,7 @@ function SettingsDialog() {
     out.coverProvider = providerValue
     out.arkModel = arkModel ?? settings.arkModel
     out.bailianModel = bailianModel ?? settings.bailianModel
+    out.portraitUrl = portraitUrl ?? settings.portraitUrl ?? ''
     if (arkKey.trim()) out.arkKey = arkKey.trim()
     if (bailianKey.trim()) out.bailianKey = bailianKey.trim()
     if (key.trim()) out.zhuqueKey = key.trim()
@@ -1436,6 +1438,12 @@ function SettingsDialog() {
                   placeholder={(isBailian ? settings.bailianKeySet : settings.arkKeySet) ? '已保存，留空表示不改' : isBailian ? '输入阿里云百炼 API Key' : '输入火山方舟 API Key'} />
               </label>
               {isBailian ? <p className="ws-muted ws-small">当前仅支持中国内地（北京）的百炼 API Key，图片格式为 PNG。</p> : null}
+              <label className="ws-field"><span>IP 人物参考图</span>
+                <input type="url" spellCheck={false} value={portraitUrl ?? settings.portraitUrl ?? ''}
+                  placeholder="https://…/portrait.png，留空则不带参考图"
+                  onChange={e => setPortraitUrl(e.target.value)} />
+              </label>
+              <p className="ws-muted ws-small">生成封面时作为人物形象参考的公网 https 图片地址，建议使用自己 IP 形象的正面照。清空并保存则不带参考图。</p>
             </fieldset>
             <fieldset className="ws-group ws-settings-fields" hidden={page !== 'storage'}>
               {['cloudName', 'apiKey', 'apiSecret'].map((field, index) => (

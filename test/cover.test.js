@@ -59,13 +59,14 @@ test('百炼封面：千问模型共用多模态接口，关掉自动扩写，�
     calls.push({ url, init })
     return url === DASHSCOPE ? generationReply() : new Response(png)
   }
-  const image = await generateBailianCover('提示词', { apiKey: 'sk-x', model: 'qwen-image-3.0-pro', resolution: '2K' }, fetchImpl)
+  const image = await generateBailianCover('提示词', { apiKey: 'sk-x', model: 'qwen-image-3.0-pro', resolution: '2K', referenceImage: 'https://example.com/portrait.png' }, fetchImpl)
   assert.ok(image.equals(png))
   assert.equal(calls[0].url, DASHSCOPE)
   assert.equal(calls[0].init.headers.authorization, 'Bearer sk-x')
   const body = JSON.parse(calls[0].init.body)
   assert.equal(body.model, 'qwen-image-3.0-pro')
   assert.deepEqual(body.input.messages[0].content.map(part => Object.keys(part)[0]), ['image', 'text'])
+  assert.equal(body.input.messages[0].content[0].image, 'https://example.com/portrait.png')
   assert.equal(body.input.messages[0].content[1].text, '提示词')
   assert.equal(body.parameters.size, BAILIAN_SIZES['2K'])
   assert.equal(body.parameters.prompt_extend, false)
@@ -84,6 +85,25 @@ test('百炼封面：万相模型不传 prompt_extend，1K 用显式宽高', asy
   await generateBailianCover('p', { apiKey: 'k', model: 'wan2.7-image', resolution: '1K' }, fetchImpl)
   assert.equal(body.parameters.size, BAILIAN_SIZES['1K'])
   assert.ok(!('prompt_extend' in body.parameters))
+})
+
+test('封面：不传参考图时只发提示词，不带任何默认人物图', async () => {
+  const png = makePng(94, 40)
+  let bailianBody
+  const bailianFetch = async (url, init) => {
+    if (url === DASHSCOPE) { bailianBody = JSON.parse(init.body); return generationReply() }
+    return new Response(png)
+  }
+  await generateBailianCover('p', { apiKey: 'k', model: 'wan2.7-image', resolution: '2K' }, bailianFetch)
+  assert.deepEqual(bailianBody.input.messages[0].content, [{ text: 'p' }])
+  let arkBody
+  const arkFetch = async (url, init) => {
+    arkBody = JSON.parse(init.body)
+    return { ok: true, status: 200, json: async () => ({ data: [{ b64_json: png.toString('base64') }] }) }
+  }
+  const { generateArkCover } = await import('../src/cover.js')
+  await generateArkCover('p', { apiKey: 'k', model: 'm', resolution: '2K', format: 'png' }, arkFetch)
+  assert.ok(!('image' in arkBody))
 })
 
 test('百炼封面：鉴权/限流/审核/通用报错分别映射', async () => {
@@ -144,6 +164,19 @@ test('封面设置：提供方/模型按白名单校验，密钥不回传明文'
   await assert.rejects(updateSettings(root, { arkModel: modelsFor('bailian')[0].id }), /封面模型/)
   assert.deepEqual(providerFormats('bailian'), ['png'])
   assert.deepEqual(providerFormats('ark'), ['png', 'jpeg'])
+})
+
+test('封面设置：IP 人物参考图有默认地址，只收 https，留空清除', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ws-portrait-settings-'))
+  assert.equal((await readSettings(root)).portraitUrl, 'https://r2.cloudnative101.net/assets/images/portrait.png')
+  const pub = publicSettings(await updateSettings(root, { portraitUrl: '  https://example.com/me.png  ' }))
+  assert.equal(pub.portraitUrl, 'https://example.com/me.png')
+  assert.equal((await readSettings(root)).portraitUrl, 'https://example.com/me.png')
+  await assert.rejects(updateSettings(root, { portraitUrl: 'http://example.com/me.png' }), /https/)
+  await assert.rejects(updateSettings(root, { portraitUrl: 'https://user:pass@example.com/me.png' }), /https/)
+  await assert.rejects(updateSettings(root, { portraitUrl: '不是地址' }), /https/)
+  assert.equal(publicSettings(await updateSettings(root, { portraitUrl: '' })).portraitUrl, '')
+  assert.equal((await readSettings(root)).portraitUrl, '', '显式清空后不回落到默认地址')
 })
 
 // 读真实模板数出占位符个数，再挑一个不含禁用词的填充值，让 coverPrompt 校验通过。
@@ -222,11 +255,13 @@ test('封面路由：火山方舟仍走原接口', async () => {
   const png = makePng(94, 40)
   const calls = []
   const fetchImpl = async (url, init) => { calls.push({ url, init }); return { ok: true, status: 200, json: async () => ({ data: [{ b64_json: png.toString('base64') }] }) } }
-  const { article, request } = await coverHost({ provider: 'ark', key: 'sk-ark', model: 'doubao-seedream-5-5-261028', fetchImpl, llm: await coverLLM() })
+  const { store, article, request } = await coverHost({ provider: 'ark', key: 'sk-ark', model: 'doubao-seedream-5-5-261028', fetchImpl, llm: await coverLLM() })
+  await updateSettings(store.root, { portraitUrl: 'https://example.com/me.png' })
   await request('cover/generate', { id: article.id, style: 'classic', resolution: '2K', count: 1, format: 'png' })
   const current = await waitCover(request)
   assert.equal(calls[0].url, ARK)
   assert.equal(JSON.parse(calls[0].init.body).model, 'doubao-seedream-5-5-261028')
+  assert.equal(JSON.parse(calls[0].init.body).image, 'https://example.com/me.png')
   assert.equal(current.coverRuns.at(-1).status, 'succeeded')
   assert.equal(current.cover.provider, 'ark')
 })

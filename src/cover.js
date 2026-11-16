@@ -7,10 +7,9 @@ import { BAILIAN_SIZES } from './cover-options.js'
 export { coverPrompt } from './cover-prompt.js'
 
 const run = promisify(execFile)
-const portrait = 'https://r2.cloudnative101.net/ScreenShot_2026-04-17_135957_070.png'
 const MAX_IMAGE = 24 * 1024 * 1024
 
-export async function generateArkCover(prompt, { apiKey, model, resolution, format, referenceImage = portrait, subject = '封面' }, fetchImpl = fetch) {
+export async function generateArkCover(prompt, { apiKey, model, resolution, format, referenceImage = null, subject = '封面' }, fetchImpl = fetch) {
   const res = await fetchImpl('https://ark.cn-beijing.volces.com/api/v3/images/generations', {
     method: 'POST', redirect: 'error', signal: AbortSignal.timeout(180_000),
     headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
@@ -38,7 +37,7 @@ export async function generateArkCover(prompt, { apiKey, model, resolution, form
   return image
 }
 
-export async function generateBailianCover(prompt, { apiKey, model, resolution, referenceImage = portrait, size: explicitSize, subject = '封面' }, fetchImpl = fetch) {
+export async function generateBailianCover(prompt, { apiKey, model, resolution, referenceImage = null, size: explicitSize, subject = '封面' }, fetchImpl = fetch) {
   // 万相和千问图像共用同一个多模态同步接口，换 model 即可；万相不支持 prompt_extend，只给千问关掉自动扩写。
   const parameters = { size: explicitSize ?? BAILIAN_SIZES[resolution], n: 1, watermark: false }
   if (model.startsWith('qwen-image')) parameters.prompt_extend = false

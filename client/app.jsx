@@ -15,6 +15,7 @@ import { cardMarkdown, emphasisFormats, formatSelection, insertFormats } from '.
 import { act, copyDetectionText, copyMarkdown, copyText, countCurrentParagraphDrafts, getState, loadLayout, loadModels, loadRevisions, loadSettings, loadSkills, rememberArticleView, saveSettings, setState, testZhuque, toast, uploadReport, useStudio } from './state.js'
 import { InsightsView } from './insights.jsx'
 import { InlineDiagramDialog, InlineDiagramPane } from './inline-diagrams.jsx'
+import { ScheduleView } from './schedule.jsx'
 
 const ICONS = {
   check: 'M3 8.5l3.2 3.2L13 5',
@@ -1540,7 +1541,7 @@ function Empty({ model }) {
 const MODULES = [
   { id: 'materials', label: '素材', icon: 'materials', soon: true, title: '素材', lead: '把零散的灵感、链接、聊天记录先放这里，攒够了挑几条一起成稿。', points: ['一句话、一个链接、一段聊天记录，贴进来就是一张卡片', '挑几张卡片一起成稿，稿子会记住用了哪些素材', '素材里出现过的事实和原话，写稿时优先用'] },
   { id: 'paper', label: '稿面', icon: 'doc' },
-  { id: 'schedule', label: '排期', icon: 'schedule', soon: true, title: '排期', lead: '把写好的稿子拖到日历上，排好哪天几点发。', points: ['一张日历看清这周要发什么', '右上角永远是下一篇要发的', '发完标记一下，进复盘'] },
+  { id: 'schedule', label: '排期', icon: 'schedule' },
   { id: 'insights', label: '复盘', icon: 'insights', title: '复盘', lead: '导入公众号后台导出的数据，看哪种写法读的人更多。', points: ['单篇阅读、账号每日趋势按篇对比', '成稿时记下的标题套路、横幅和皮肤，可以拿来比较', '从数据里提炼出的规则，确认后写进写作 skill'] },
   { id: 'skills', label: '技能', icon: 'skills' },
 ]
@@ -1877,6 +1878,7 @@ export function Studio() {
   if (!data) content = <div className="ws-center">{error ? <p className="ws-muted">加载失败：{error}</p> : <span className="ws-shimmer">正在打开稿面…</span>}</div>
   else if (item.id === 'paper') content = paperHome ? <DraftHome data={data} /> : <PaperModule data={data} />
   else if (item.id === 'insights') content = <InsightsView />
+  else if (item.id === 'schedule') content = <ScheduleView data={data} />
   else if (item.id === 'skills') content = <SkillsView />
   else content = <SoonView item={item} />
   return (

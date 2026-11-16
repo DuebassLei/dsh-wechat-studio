@@ -3,7 +3,7 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { createArticle, listMeta, readiness } from '../src/article.js'
+import { clearSchedule, createArticle, listMeta, markPublished, readiness, setSchedule, unpublish } from '../src/article.js'
 import { route } from '../src/host.js'
 import { Store } from '../src/store.js'
 
@@ -37,4 +37,20 @@ test('listMeta 透出排期、发布和体检结果', () => {
   assert.equal(meta.scheduledFor, null)
   assert.equal(meta.publishedAt, null)
   assert.equal(meta.readiness.done, 5)
+})
+
+test('排期与发布标记：写入、清除都更新 updatedAt', () => {
+  const article = readyArticle()
+  const before = article.updatedAt
+  setSchedule(article, '2026-11-17T12:00:00.000Z')
+  assert.equal(article.scheduledFor, '2026-11-17T12:00:00.000Z')
+  markPublished(article, '2026-11-17T12:30:00.000Z')
+  assert.equal(article.publishedAt, '2026-11-17T12:30:00.000Z')
+  assert.equal(listMeta(article).scheduledFor, '2026-11-17T12:00:00.000Z')
+  assert.equal(listMeta(article).publishedAt, '2026-11-17T12:30:00.000Z')
+  clearSchedule(article)
+  unpublish(article)
+  assert.equal(listMeta(article).scheduledFor, null)
+  assert.equal(listMeta(article).publishedAt, null)
+  assert.ok(article.updatedAt >= before)
 })

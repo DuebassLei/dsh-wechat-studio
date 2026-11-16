@@ -247,6 +247,26 @@ export function readiness(article, { bannerReady = false } = {}) {
   return { items, done: items.filter(item => item.done).length, total: items.length }
 }
 
+export function setSchedule(article, at) {
+  article.scheduledFor = at
+  touch(article)
+}
+
+export function clearSchedule(article) {
+  delete article.scheduledFor
+  touch(article)
+}
+
+export function markPublished(article, at) {
+  article.publishedAt = at
+  touch(article)
+}
+
+export function unpublish(article) {
+  delete article.publishedAt
+  touch(article)
+}
+
 export function listMeta(article, { bannerReady = false } = {}) {
   const chars = article.blocks.reduce((sum, block) => sum + plainOf(block.text).length, 0)
   return {

@@ -6,6 +6,7 @@ const ICONS = {
   check: 'M3 8.5l3.2 3.2L13 5',
   close: 'M4 4l8 8M12 4l-8 8',
   plus: 'M8 3v10M3 8h10',
+  chevron: 'M4 6l4 4 4-4',
   doc: 'M4 2h5.5L12.5 5v9H4zM6.5 8h4M6.5 10.5h4',
 }
 function Icon({ name, size = 16 }) {
@@ -114,6 +115,59 @@ function PublishedCard({ draft }) {
   )
 }
 
+// 原生 select 的系统弹层按最长选项撑宽，会溢出弹窗；自绘列表框把宽度锁在弹窗内
+function DraftSelect({ dock, id, onChange }) {
+  const [open, setOpen] = React.useState(false)
+  const [active, setActive] = React.useState(() => Math.max(0, dock.findIndex(a => a.id === id)))
+  const rootRef = React.useRef(null)
+  const listRef = React.useRef(null)
+  const chosen = dock.find(a => a.id === id)
+  React.useEffect(() => {
+    if (!open) return
+    const onDown = e => { if (!rootRef.current?.contains(e.target)) setOpen(false) }
+    document.addEventListener('pointerdown', onDown)
+    return () => document.removeEventListener('pointerdown', onDown)
+  }, [open])
+  React.useEffect(() => {
+    if (open) listRef.current?.querySelector('[data-active="true"]')?.scrollIntoView({ block: 'nearest' })
+  }, [open, active])
+  const pick = value => { onChange(value); setOpen(false) }
+  const onKeyDown = e => {
+    if (!open) {
+      if (['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(e.key)) { e.preventDefault(); setOpen(true) }
+      return
+    }
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setOpen(false) }
+    else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault()
+      setActive(i => Math.min(dock.length - 1, Math.max(0, i + (e.key === 'ArrowDown' ? 1 : -1))))
+    } else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (dock[active]) pick(dock[active].id) }
+    else if (e.key === 'Tab') setOpen(false)
+  }
+  return (
+    <div className="ws-sched-choose" ref={rootRef}>
+      <button type="button" className="ws-sched-choose-btn" role="combobox" aria-expanded={open} aria-controls="ws-sched-choose-list"
+        aria-activedescendant={open && dock[active] ? `ws-opt-${dock[active].id}` : undefined}
+        disabled={!dock.length} autoFocus onClick={() => setOpen(o => !o)} onKeyDown={onKeyDown}>
+        <span className="ws-sched-choose-text">{chosen?.title ?? '没有待排稿件'}</span>
+        <Icon name="chevron" size={14} />
+      </button>
+      {open ? (
+        <ul className="ws-sched-choose-list" id="ws-sched-choose-list" role="listbox" aria-label="选稿件" ref={listRef}>
+          {dock.map((a, i) => (
+            <li key={a.id} id={`ws-opt-${a.id}`} role="option" aria-selected={a.id === id} data-active={i === active}
+              className={`ws-sched-choose-opt ${a.id === id ? 'is-on' : ''}`} title={a.title}
+              onPointerMove={() => setActive(i)} onClick={() => pick(a.id)}>
+              <span className="ws-sched-choose-mark">{a.id === id ? <Icon name="check" size={13} /> : null}</span>
+              <span className="ws-sched-choose-text">{a.title}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  )
+}
+
 function SchedulePicker({ data, picker, onClose }) {
   const dock = data.articles.filter(a => !a.archivedAt && !a.publishedAt && !a.scheduledFor)
   const [id, setId] = React.useState(picker.id ?? dock[0]?.id ?? '')
@@ -123,6 +177,12 @@ function SchedulePicker({ data, picker, onClose }) {
   const [slot, setSlot] = React.useState(existing ? slotOf(chosen.scheduledFor).id : 'evening')
   const [time, setTime] = React.useState(existing ? timeLabel(chosen.scheduledFor) : '20:00')
   const pending = useStudio(s => s.pending)
+  // 焦点可能落在弹窗内不可聚焦区域（body），Escape 需在 document 层兜底
+  React.useEffect(() => {
+    const onKey = e => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
   const submit = async event => {
     event.preventDefault()
     if (!id || !day) return
@@ -137,18 +197,15 @@ function SchedulePicker({ data, picker, onClose }) {
   }
   return (
     <div className="ws-sched-overlay" role="presentation" onPointerDown={e => { if (e.target === e.currentTarget) onClose() }}>
-      <form className="ws-sched-picker" role="dialog" aria-modal="true" aria-label="安排发布时间" onSubmit={submit}
-        onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); onClose() } }}>
+      <form className="ws-sched-picker" role="dialog" aria-modal="true" aria-label="安排发布时间" onSubmit={submit}>
         <div className="ws-sched-picker-head">
           <h2>{chosen?.scheduledFor ? '改期' : '排一篇'}</h2>
           <button type="button" className="ws-icon-btn" aria-label="关闭" onClick={onClose}><Icon name="close" /></button>
         </div>
         {picker.id ? <p className="ws-sched-picker-title">{chosen?.title}</p> : (
-          <label className="ws-sched-field">选稿件
-            <select value={id} onChange={e => setId(e.target.value)} autoFocus>
-              {dock.map(a => <option key={a.id} value={a.id}>{a.title}</option>)}
-            </select>
-          </label>
+          <div className="ws-sched-field">选稿件
+            <DraftSelect dock={dock} id={id} onChange={setId} />
+          </div>
         )}
         <label className="ws-sched-field">日期
           <input type="date" value={day} min="2000-01-01" max="2100-12-31" required autoFocus={Boolean(picker.id)} onChange={e => setDay(e.target.value)} />

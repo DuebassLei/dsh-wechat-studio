@@ -234,7 +234,20 @@ export function numbered(article) {
   return article.blocks.map((block, index) => `【${index + 1}】${block.text}`).join('\n\n')
 }
 
-export function listMeta(article) {
+/** 发车体检：五项全过才算就绪。横幅是否就绪由 Host 传入，避免依赖 banner.js。 */
+export function readiness(article, { bannerReady = false } = {}) {
+  const pending = article.blocks.some(block => ['flag', 'fixed'].includes(block.check?.status))
+  const items = [
+    { id: 'body', label: '正文', done: article.blocks.length > 0 },
+    { id: 'title', label: '标题', done: Boolean(article.title) },
+    { id: 'quality', label: '质检', done: Boolean(article.zhuque?.round) && !pending },
+    { id: 'cover', label: '封面', done: Boolean(article.cover?.id) },
+    { id: 'banner', label: '横幅', done: bannerReady },
+  ]
+  return { items, done: items.filter(item => item.done).length, total: items.length }
+}
+
+export function listMeta(article, { bannerReady = false } = {}) {
   const chars = article.blocks.reduce((sum, block) => sum + plainOf(block.text).length, 0)
   return {
     id: article.id, title: article.title || article.topic || '未命名文章', updatedAt: article.updatedAt, chars,
@@ -244,6 +257,9 @@ export function listMeta(article) {
     coverId: article.cover?.id ?? null,
     review: article.blocks.reduce((count, block) => count + Number(['flag', 'fixed'].includes(block.check?.status)), 0),
     checked: Boolean(article.zhuque?.round),
+    scheduledFor: article.scheduledFor ?? null,
+    publishedAt: article.publishedAt ?? null,
+    readiness: readiness(article, { bannerReady }),
   }
 }
 

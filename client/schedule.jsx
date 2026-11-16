@@ -140,7 +140,7 @@ function SchedulePicker({ data, picker, onClose }) {
       <form className="ws-sched-picker" role="dialog" aria-modal="true" aria-label="安排发布时间" onSubmit={submit}
         onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); onClose() } }}>
         <div className="ws-sched-picker-head">
-          <h2>{picker.id ? '改期' : '排一篇'}</h2>
+          <h2>{chosen?.scheduledFor ? '改期' : '排一篇'}</h2>
           <button type="button" className="ws-icon-btn" aria-label="关闭" onClick={onClose}><Icon name="close" /></button>
         </div>
         {picker.id ? <p className="ws-sched-picker-title">{chosen?.title}</p> : (

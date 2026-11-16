@@ -173,7 +173,8 @@ function NextUp({ data, onReschedule }) {
     .sort((a, b) => a.scheduledFor.localeCompare(b.scheduledFor))
   const next = candidates.find(a => new Date(a.scheduledFor).getTime() >= now) ?? null
   const overdue = candidates.filter(a => new Date(a.scheduledFor).getTime() < now)
-  const target = next ?? overdue[0]
+  // 过点未发的最紧急，优先于未来排期显示
+  const target = overdue[0] ?? next
   if (!target) return null
   const at = new Date(target.scheduledFor).getTime()
   const diff = at - now

@@ -9,6 +9,7 @@ import { createArticle } from '../src/article.js'
 import { COVER_SKILL_DIR } from '../src/ai.js'
 import { generateBailianCover } from '../src/cover.js'
 import { BAILIAN_SIZES, modelsFor, providerFormats } from '../src/cover-options.js'
+import { COVER_STYLES } from '../src/cover-styles.js'
 import { publicSettings, readSettings, updateSettings } from '../src/settings.js'
 import { Store } from '../src/store.js'
 
@@ -180,8 +181,9 @@ test('封面设置：IP 人物参考图有默认地址，只收 https，留空�
 })
 
 // 读真实模板数出占位符个数，再挑一个不含禁用词的填充值，让 coverPrompt 校验通过。
-async function coverLLM() {
-  const template = await readFile(join(COVER_SKILL_DIR, 'references/prompt_template.md'), 'utf8')
+async function coverLLM(style = 'classic') {
+  const templateName = style === 'classic' ? 'prompt_template.md' : `prompt_template_${style}.md`
+  const template = await readFile(join(COVER_SKILL_DIR, `references/${templateName}`), 'utf8')
   const body = template.match(/^```[^\n]*\n([\s\S]*?)^```[ \t]*$/m)?.[1]?.trim()
   const slotCount = [...body.matchAll(/\{\{([^{}]+)\}\}/g)].length
   const terms = (await readFile(join(COVER_SKILL_DIR, 'references/blocklist.txt'), 'utf8'))
@@ -264,4 +266,27 @@ test('封面路由：火山方舟仍走原接口', async () => {
   assert.equal(JSON.parse(calls[0].init.body).image, 'https://example.com/me.png')
   assert.equal(current.coverRuns.at(-1).status, 'succeeded')
   assert.equal(current.cover.provider, 'ark')
+})
+
+test('封面模板：每种风格都有带占位符的提示词代码块', async () => {
+  for (const style of COVER_STYLES) {
+    const templateName = style.id === 'classic' ? 'prompt_template.md' : `prompt_template_${style.id}.md`
+    const template = await readFile(join(COVER_SKILL_DIR, `references/${templateName}`), 'utf8')
+    const body = template.match(/^```[^\n]*\n([\s\S]*?)^```[ \t]*$/m)?.[1]?.trim()
+    assert.ok(body, `${style.id} 模板缺少提示词代码块`)
+    assert.ok([...body.matchAll(/\{\{([^{}]+)\}\}/g)].length > 0, `${style.id} 模板没有占位符`)
+  }
+})
+
+test('封面路由：felt 风格不传真人参考图', async () => {
+  const png = makePng(94, 40)
+  const calls = []
+  const fetchImpl = async (url, init) => { calls.push({ url, init }); return { ok: true, status: 200, json: async () => ({ data: [{ b64_json: png.toString('base64') }] }) } }
+  const { store, article, request } = await coverHost({ provider: 'ark', key: 'sk-ark', fetchImpl, llm: await coverLLM('felt') })
+  await updateSettings(store.root, { portraitUrl: 'https://example.com/me.png' })
+  await request('cover/generate', { id: article.id, style: 'felt', resolution: '2K', count: 1, format: 'png' })
+  const current = await waitCover(request)
+  assert.equal(JSON.parse(calls[0].init.body).image, undefined, 'felt 是毛毡微缩场景，不能带真人参考图')
+  assert.equal(current.coverRuns.at(-1).status, 'succeeded')
+  assert.equal(current.cover.style, 'felt')
 })

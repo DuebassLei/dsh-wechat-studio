@@ -24,6 +24,7 @@ import { detect } from './zhuque.js'
 const MAX_JSON = 2_000_000
 const MAX_PDF = 30_000_000
 const MAX_IMPORT = 10_000_000
+const { version: VERSION } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
 function json(res, status, body) {
   res.statusCode = status
   res.setHeader('content-type', 'application/json; charset=utf-8')
@@ -421,7 +422,7 @@ export async function route(deps, req, res) {
 
   if (get) {
     if (path === 'state') return ok()
-    if (path === 'settings') return json(res, 200, publicSettings(await readSettings(store.root)))
+    if (path === 'settings') return json(res, 200, { ...publicSettings(await readSettings(store.root)), version: VERSION })
     if (path === 'models') return json(res, 200, { providers: await listModels(ctx), default: defaultSelection(ctx), current: modelOverride() })
     if (path === 'skills') {
       const dir = join(store.root, 'skills')
@@ -694,7 +695,8 @@ export async function route(deps, req, res) {
       const apiKey = provider === 'bailian' ? settings.bailianKey : settings.arkKey
       const model = provider === 'bailian' ? settings.bailianModel : settings.arkModel
       if (!apiKey) return json(res, 400, { error: provider === 'bailian' ? '请先在设置中填写阿里云百炼 API Key。' : '请先在设置中填写火山方舟 API Key。' })
-      startCover(deps, article, apiKey, { style, resolution, count, format, model, provider, referenceImage: settings.portraitUrl || null })
+      // felt 是毛毡微缩场景，传真人参考图会把画面拉回真人摄影
+      startCover(deps, article, apiKey, { style, resolution, count, format, model, provider, referenceImage: style === 'felt' ? null : settings.portraitUrl || null })
       return ok()
     }
     case 'images/retry': {
@@ -900,7 +902,7 @@ export async function route(deps, req, res) {
     case 'settings': {
       const next = await updateSettings(store.root, body)
       setModelOverride(next.model)
-      return json(res, 200, publicSettings(next))
+      return json(res, 200, { ...publicSettings(next), version: VERSION })
     }
     case 'zhuque/test': {
       // 用一句固定的话试一次，确认密钥和接口地址能用。填了新密钥就试新的，没填就试已保存的。

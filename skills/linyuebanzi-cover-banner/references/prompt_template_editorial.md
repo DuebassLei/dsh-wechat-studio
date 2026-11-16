@@ -70,9 +70,6 @@ EDITORIAL MICRO-LABELS (letter-spaced uppercase English, small, black, placed wi
 - Top-right corner: "{{胶囊标签3,如 IDEAS TOOLS #PRODUCTIVITY}}"
 - Style: wide letter-spacing, small size, understated — furniture, not the hero
 
-AUTHOR WATERMARK (bottom right corner):
-"@林月半子 · LunarAITalk" in small grey text
-
 STYLE NOTES:
 - Photo-realistic portrait, NOT illustration
 - Bright high-key overall exposure, clean white-ish background with subtle paper texture
@@ -80,6 +77,7 @@ STYLE NOTES:
 - No terminal code background, no dark ambience, no glow effects
 - Main color palette: off-white, black, Klein blue, midnight green polo — nothing else
 - No exaggerated facial expressions
+- No author watermark or signature text
 - Vibe: a sharp young tech editor presenting a finding, magazine-cover confidence
 
 ASPECT RATIO: 21:9 (wide cinematic banner format)
@@ -128,7 +126,7 @@ editorial 风的"三标签"是 2-3 组英文胶囊小标签,letter-spaced 大写
 1. 米白纸感底 `#F4F3EF`,明亮高调,**禁止深色底**
 2. 强调色只有克莱因蓝 `#1F4FE0`,高亮词和几何块共用,**禁止第二种强调色**
 3. 几何块是平的纯色块, crisp edges,**禁止渐变和发光**
-4. 共享 IP 基线:人物、午夜绿 Polo、左字右人、水印、克制表情(见 SKILL.md)
+4. 共享 IP 基线:人物、午夜绿 Polo、左字右人、克制表情(见 SKILL.md)
 5. 禁止:终端代码背景、暗色氛围、glow 特效、夸张表情
 
 ## 自检三问

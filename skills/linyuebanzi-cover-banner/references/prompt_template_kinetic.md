@@ -63,15 +63,13 @@ OUTLINE ECHO (BOTTOM-LEFT):
 - The word "{{英文主题词,大写首字母,如 Codex}}" in giant italic outline-only letters — thin black stroke, transparent fill, partially cropped by the bottom and left edges
 - It must read as a background echo, much lighter than the main title
 
-AUTHOR WATERMARK (bottom right corner):
-"@林月半子 · LunarAITalk" in small white text, sitting on the black panel area
-
 STYLE NOTES:
 - Photo-realistic portrait, NOT illustration
 - The italic slant of ALL type and ALL red bars must share the same angle — one consistent direction of speed
 - Flat solid color blocks only: no gradients, no glow, no 3D effects, no shadows on type
 - No capsule labels, no terminal windows, no checkerboards, no extra decoration — type and person only
 - No exaggerated facial expressions
+- No author watermark or signature text
 - Vibe: a sports-poster for a tech argument — speed, conviction, impact
 
 ASPECT RATIO: 21:9 (wide cinematic banner format)
@@ -114,7 +112,7 @@ ASPECT RATIO: 21:9 (wide cinematic banner format)
 2. 所有斜体元素(中文标题、红色速度条、空心英文回声)**共享同一个倾斜角度**
 3. 高亮词是红色斜体字本身,**禁止压色块**(那是 campaign 的玩法)
 4. 右侧是黑色斜切面板 + 一条红色斜切条纹 + 大头人物特写,**没有右侧 UI 对象、没有小标签、没有终端窗**
-5. 共享 IP 基线:人物、午夜绿 Polo、左字右人、水印、克制表情(见 SKILL.md)
+5. 共享 IP 基线:人物、午夜绿 Polo、左字右人、克制表情(见 SKILL.md)
 6. 禁止:渐变、glow、3D、胶囊标签、棋盘格、任何其他装饰
 
 ## 自检三问

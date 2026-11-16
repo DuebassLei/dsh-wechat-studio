@@ -95,15 +95,13 @@ Style: small white text with emoji icons, casual horizontal layout
 ENGLISH ACCENT TEXT (subtle, top of main title area):
 "{{英文副标题,2-4 词,大写}}" in faded {{高亮色名}}, semi-transparent, large but ghost-like behind the main Chinese title
 
-AUTHOR WATERMARK (bottom right corner):
-"@林月半子 · LunarAITalk" in small grey text
-
 STYLE NOTES:
 - Photo-realistic portrait, NOT illustration
 - Background has depth — slight bokeh/blur on far elements
 - Main color palette: deep teal/charcoal background, midnight green polo, white title, theme accent colors from the chosen preset only
 - Strong tonal separation between the polo and the background to avoid blending
 - No exaggerated facial expressions
+- No author watermark or signature text anywhere
 - Maintain a "professional senior dev sharing a discovery" vibe
 
 ASPECT RATIO: 21:9 (wide cinematic banner format)
@@ -280,7 +278,7 @@ ASPECT RATIO: 21:9 (wide cinematic banner format)
 4. **人物** 30+ 中国男性程序员,薄黑框眼镜
 5. **服装** 午夜绿(#004953)Oversize 重磅华夫格短袖 Polo,落肩深 V 宽袖
 6. **布局** 左 60% 文字 / 右 40% 人物 + UI 卡片
-7. **水印** 右下角 `@林月半子 · LunarAITalk`
+7. **无水印** 画面不带作者署名
 8. **背景必备** 终端命令片段 + 目录树
 9. **从右上方打来的定向光**
 10. **禁用** 日期、分割线、过度装饰、夸张表情

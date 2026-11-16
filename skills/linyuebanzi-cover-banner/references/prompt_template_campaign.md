@@ -76,15 +76,13 @@ EDITORIAL MICRO-LABELS (letter-spaced uppercase English, small, black, placed in
 - Bottom row: "{{胶囊标签4,如 SMALL TEAM / BIGGER POSSIBILITY}}", "{{胶囊标签5,如 AGENTS AUTOMATION REAL IMPACT}}", "{{胶囊标签6,如 CHINESE BUILDERS GLOBAL OPPORTUNITIES}}"
 - Style: wide letter-spacing, small, understated furniture — the giant display word and Chinese title are the heroes
 
-AUTHOR WATERMARK (bottom right corner):
-"@林月半子 · LunarAITalk" in small white text on a black bar, with a small acid lime square accent
-
 STYLE NOTES:
 - Photo-realistic portrait with heavy print/grain treatment, NOT a clean digital photo
 - The giant display word must dominate the top — if it reads as a normal-sized headline, it is wrong
 - Flat solid blocks (black, lime), crisp edges, no gradients, no glow
 - Checkerboard strips and hairline grid give the zine/fashion layout discipline
 - No exaggerated facial expressions
+- No author watermark or signature text
 - Vibe: a fashion campaign for a one-person tech company — attitude, not sales
 
 ASPECT RATIO: 21:9 (wide cinematic banner format)
@@ -140,8 +138,8 @@ campaign 风的视觉锚点。**1 个英文核心词,大写**,如 `CODEX`、`HER
 1. 奶油纸底 `#F1EDE3` + 纯黑 + 酸性荧光绿 `#C8F12F`,**禁止第四种颜色**
 2. 顶部巨字必须跨满全宽、出血裁切,**禁止缩成普通标题**
 3. 全图颗粒噪点 + 半调复印质感,**禁止干净光滑的数字渲染感**
-4. 荧光绿只用于:高亮词色块 + 人物背后色块边缘 + 棋盘格点缀 + 水印小方块。棋盘格只能是 1-2 处小面积局部点缀(每处几格大格子、被画布边缘裁切),禁止铺满任何一条边的整条棋盘格带/边框
-5. 共享 IP 基线:人物、午夜绿 Polo、左字右人、水印、克制表情(见 SKILL.md)
+4. 荧光绿只用于:高亮词色块 + 人物背后色块边缘 + 棋盘格点缀。棋盘格只能是 1-2 处小面积局部点缀(每处几格大格子、被画布边缘裁切),禁止铺满任何一条边的整条棋盘格带/边框
+5. 共享 IP 基线:人物、午夜绿 Polo、左字右人、克制表情(见 SKILL.md)
 6. 禁止:渐变、glow、3D 效果、圆润可爱的元素
 
 ## 自检三问

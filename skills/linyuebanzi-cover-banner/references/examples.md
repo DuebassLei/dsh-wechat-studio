@@ -2,7 +2,7 @@
 
 这里是已经跑通过的几个案例,供参考"怎么把不同类型的文章提炼成提示词"。
 
-**风格说明**:案例 1-5 是 `classic` 经典深绿大厂博主风;案例 6 是 `editorial` 新锐科技编辑风;案例 7 是 `campaign` 时尚人物 Campaign 风;案例 8 是 `kinetic` 动感斜体大字风;案例 9 是 `grunge` 颗粒喷溅海报风。五种风格的人设/服装/水印/表情基线完全一致,变的是底色、强调色、装饰元素和右侧对象。
+**风格说明**:案例 1-5 是 `classic` 经典深绿大厂博主风;案例 6 是 `editorial` 新锐科技编辑风;案例 7 是 `campaign` 时尚人物 Campaign 风;案例 8 是 `kinetic` 动感斜体大字风;案例 9 是 `grunge` 颗粒喷溅海报风。五种风格的人设/服装/表情基线完全一致,变的是底色、强调色、装饰元素和右侧对象。
 
 ---
 
@@ -176,7 +176,7 @@ SUBJECT (RIGHT SIDE):
   STYLE REFERENCE: Japanese-inspired oversized casual polo, like the relaxed polos popular in 2024-2025 menswear — NOT a tight business polo, NOT a Lacoste classic fit, NOT a sportswear polo
 
 - Glasses: thin black wire-frame
-- Facial expression: calm, thoughtful, slight smile — NOT exaggerated, NOT smirking, NOT shocked, NOT excited
+- Facial expression: calm, thoughtful, slight smile — restrained and composed, natural subtle smile
 - Half-body shot, positioned on the right 1/3 of the canvas
 - Body slightly turned toward center
 - Interaction pattern with the UI card: presenting from below
@@ -217,9 +217,6 @@ Style: small white text with emoji icons, casual horizontal layout
 
 ENGLISH ACCENT TEXT (subtle, top of main title area):
 "YOUDAONOTE × LLM WIKI" in faded amber, semi-transparent, large but ghost-like behind the main Chinese title
-
-AUTHOR WATERMARK (bottom right corner):
-"@林月半子 · LunarAITalk" in small grey text
 
 STYLE NOTES:
 - Photo-realistic portrait, NOT illustration
@@ -316,12 +313,12 @@ ASPECT RATIO: 21:9 (wide cinematic banner format)
 | 主标题第二行 | 翻出一个**知识库**(黑字压荧光绿 `#B8F03A` 色块) |
 | 等宽小字 | `ASK, DON'T SEARCH` \| `2 INBOXES · 1 AGENT` \| `NO PDF DOWNLOAD` |
 | 终端菜单 | `> 选题雷达` / `> 时间线` / `> 结算台账` / `> Ask_`(第一行浅灰高亮) |
-| 强调色 | preset `lime` `#B8F03A`:左侧竖条 + 右上角十字角块 + "知识库"色块 + 水印小方块,只这四处 |
+| 强调色 | preset `lime` `#B8F03A`:左侧竖条 + 右上角十字角块 + "知识库"色块,只这三处 |
 | 表情 | calm, confident, slight smile |
 | 服装 | `tee` 深绿圆领 T(定稿图);用 skill 默认的 Polo 也跑过一版,两种都可用 |
 | 动作 | 右手食指指向终端菜单第一行 |
 
-**关键提示词锚点**:`the large Chinese title is the hero and reads instantly` / `English eyebrow height about 22% of the canvas, only spans the left part, not full width` / `black ink spray and coarse grain particles dissolving from left paper into the right black-and-white photo` / `exactly these four lime accents, nothing else in lime` / `render exactly these texts, each only once`。
+**关键提示词锚点**:`the large Chinese title is the hero and reads instantly` / `English eyebrow height about 22% of the canvas, only spans the left part, not full width` / `black ink spray and coarse grain particles dissolving from left paper into the right black-and-white photo` / `exactly these three lime accents, nothing else in lime` / `render exactly these texts, each only once`。
 
 **踩过的坑**:第一版用 16:9 出图,英文巨字占了画面上半、中文偏小,裁成 2.35:1 时上下都会切到内容。第二版改成"中文当主角、英文压成眉题",并保证所有内容落在 21:9 安全区内,一次通过。之后统一用 `--aspect-ratio 21:9` 原生出图。
 

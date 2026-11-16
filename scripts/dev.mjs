@@ -42,6 +42,7 @@ const replies = {
     return JSON.stringify({ paragraphs: numbers.map((n, i) => ({ block: n, text: i === 0 ? `（演示）第 ${n} 段成组改写过了，详略和前后不一样。[可补：你自己当时的原话]` : `（演示）第 ${n} 段改短了。` })) })
   },
   fix: () => '我原来排一篇要四十分钟，现在写完就丢给它，回来直接贴。[可补：你自己的真实用时]',
+  cover: user => JSON.stringify({ values: JSON.parse(user).slots.map(() => '演示填充') }),
   report: user => {
     const blocks = [...user.split('# 文章段落').pop().matchAll(/【(\d+)】/g)].map(m => Number(m[1]))
     return JSON.stringify({ overall: { human: 62, suspect: 31, ai: 7 }, segments: [{ block: blocks[1], score: 0.93 }, { block: blocks.at(-2), score: 0.56 }].filter(row => row.block) })
@@ -87,7 +88,9 @@ const services = {
 const fetchImpl = async (url, init) => {
   const send = (status, body) => ({ ok: status < 300, status, text: async () => JSON.stringify(body) })
   if (url === 'https://ark.cn-beijing.volces.com/api/v3/images/generations') {
-    const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
+    // 94x40 纯色 PNG，够 saveCover 裁切；慢一点返回，让界面上的生成进度看得见
+    await new Promise(resolve => setTimeout(resolve, Number(process.env.DEV_COVER_DELAY || 2500)))
+    const png = 'iVBORw0KGgoAAAANSUhEUgAAAF4AAAAoCAIAAAD4y9rlAAAAWUlEQVR4nO3QMQ0AIADAMPwrRAIfFjDAw8WOJhOwdOw1dW18P8iGBg0aNGjQNEODBg0aNGiaoUGDBg0aNM3QoEGDBg2aZmjQoEGDBk0zNGjQoEGDphkaNO8dEZFsmj6pfb8AAAAASUVORK5CYII='
     return { ok: true, status: 200, json: async () => ({ data: [{ b64_json: png }] }) }
   }
   if (url === 'https://api.cloudinary.com/v1_1/demo/image/upload') {

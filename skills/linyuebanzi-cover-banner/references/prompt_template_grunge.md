@@ -10,7 +10,7 @@
 |---|---|---|
 | 主角 | 顶部跨满全宽的英文巨字 | 中文两行主标题(英文缩成眉题) |
 | 背景 | 奶油纸 + 栏线网格 + 棋盘格 | 左纸面 → 颗粒喷溅 → 右黑白摄影背景 |
-| 强调色 | 固定 `#C8F12F`,高亮块 + 棋盘格 | 5 种 preset 选 1(默认荧光绿 `#B8F03A`),只用于左侧竖条 + 右上角方块 + 高亮词底 + 水印小方块 |
+| 强调色 | 固定 `#C8F12F`,高亮块 + 棋盘格 | 5 种 preset 选 1(默认荧光绿 `#B8F03A`),只用于左侧竖条 + 右上角方块 + 高亮词底 |
 | 小标签 | 5-6 组胶囊标签撒在网格里 | 标题下方只有一行等宽英文小字,竖线分隔 |
 | 右侧道具 | 迷你终端窗(工作流动词) | 终端菜单面板(文章里的几个场景 + Ask_),人物食指指向它 |
 
@@ -36,7 +36,7 @@
 
 1. 用户点名了颜色就用点名的;没点名时按上表"适合什么文章"选,拿不准就用 `lime`。
 2. 商单时避开竞品的品牌色;甲方品牌色恰好接近某个 preset 时可以选那一组,但不要为了品牌临时发明新颜色。
-3. 一张图只用一组强调色,四处位置(竖条、角块、高亮词底、水印小方块)都用同一个色值。
+3. 一张图只用一组强调色,三处位置(竖条、角块、高亮词底)都用同一个色值。
 4. 人物肤色保持自然,衣服颜色按服装选项走(深绿系),不随强调色变化。
 
 每次生成时,把 `{{中括号}}` 占位符换成从文章提炼的新内容,**其他保持不动**。
@@ -56,18 +56,17 @@ COLOR SYSTEM (fixed):
 TRANSITION:
 - Between the paper area and the photo area, a wide band of black ink spray and coarse grain particles, like spray paint or a worn photocopy edge, dissolving from left paper into the right photo. The transition runs vertically roughly at 55% of the width.
 
-ACCENT COLOR (exactly these four places, the accent color appears nowhere else):
+ACCENT COLOR (exactly these three places, the accent color appears nowhere else):
 1. A thin solid accent-color vertical strip along the full left edge of the canvas
 2. One solid accent-color square in the top-right corner area with a thin black crosshair (+) drawn on it
 3. The solid accent-color block behind the highlighted Chinese words
-4. A tiny accent-color square next to the watermark
 
 LAYOUT (left to right):
 - Left 58%: typography on paper
   - Top: the English eyebrow word, ultra-condensed heavy black sans-serif with distressed ink texture inside the letters. It is big but secondary: its height is about 22% of the canvas height and it only spans the left part of the canvas, roughly the same width as the Chinese title. It is not full width.
   - Below it: the two-line Chinese title, the largest element in the image. Each line is about 18% of the canvas height. Ultra-heavy black sans-serif with slight ink-wear texture. The second line may extend to about 62% of the canvas width and may overlap the person's pointing hand.
   - Below the title: one single line of small monospace uppercase English, black, separated by vertical bars.
-- Right 42%: the person, a black terminal menu panel, the watermark
+- Right 42%: the person, a black terminal menu panel
 
 SUBJECT (RIGHT SIDE):
 - A 30-something Asian male, senior software engineer turned content creator, thin black wire-frame glasses, slightly messy short black hair
@@ -88,7 +87,6 @@ TEXT IN THE IMAGE (render exactly these texts, each only once, and no other text
 3. Chinese title line 2: the text "{{第二行完整文字}}", where the characters "{{第二行非高亮部分}}" are pure black on the paper, and the characters "{{高亮词}}" are black characters sitting on the solid accent-color block ({{强调色色值,如 #B8F03A}})
 4. Small monospace line under the title: "{{小字1}}" | "{{小字2}}" | "{{小字3}}"
 5. The terminal menu rows listed above
-6. Watermark in the bottom-right corner: "@林月半子 · LunarAITalk" in small white-on-dark or dark-on-light text, with the tiny accent-color square beside it
 Do not render any color names, hex codes, layout words or other English words.
 NO punctuation, NO quotation marks between the Chinese title characters.
 
@@ -98,6 +96,7 @@ STYLE NOTES:
 - Flat solid accent-color blocks with crisp edges, no gradients, no glow, no 3D
 - Calm, restrained expression, no exaggerated face
 - No logos, no app screenshots, no robots, no glowing chips, no extra people, no dates
+- No author watermark or signature text
 
 ASPECT RATIO: 21:9 (wide cinematic banner format)
 ```
@@ -144,19 +143,19 @@ ASPECT RATIO: 21:9 (wide cinematic banner format)
 ## 风格基线——不能改的部分
 
 1. 左侧暖白皱纸 `#EEEBE4` + 右侧黑白摄影背景 + 中间颗粒喷溅过渡
-2. 强调色从 5 组 preset 里选 1 组(默认 `lime` `#B8F03A`),只用四处:左侧竖条、右上角十字角块、高亮词底、水印小方块;不临时发明新颜色
+2. 强调色从 5 组 preset 里选 1 组(默认 `lime` `#B8F03A`),只用三处:左侧竖条、右上角十字角块、高亮词底;不临时发明新颜色
 3. 中文两行标题是全图最大元素;英文是眉题,不跨满全宽
 4. 标题下只有一行等宽小字,不撒胶囊标签、不画棋盘格、不画栏线网格
 5. 人物食指指向右下角黑色终端菜单面板
-6. 共享 IP 基线:人物、左字右人、水印、克制表情(见 SKILL.md);服装是本风格的例外,默认深绿圆领 T,也可以换回午夜绿 Polo(见「服装选项」)
+6. 共享 IP 基线:人物、左字右人、克制表情(见 SKILL.md);服装是本风格的例外,默认深绿圆领 T,也可以换回午夜绿 Polo(见「服装选项」)
 
 ## 自检三问
 
 1. **缩到手机卡片大小,中文标题还是一眼最先看到的吗?** 英文眉题比中文还抢眼 → 把眉题高度写小,删掉 full width 之类的词
-2. **强调色是不是只出现在那四处、色相对不对?** 多出来的色块 / 色字,或者橙变红、青变蓝 → 重写颜色段,把 preset 表里的 NOT 锚点补全
+2. **强调色是不是只出现在那三处、色相对不对?** 多出来的色块 / 色字,或者橙变红、青变蓝 → 重写颜色段,把 preset 表里的 NOT 锚点补全
 3. **画面里有没有多出来的字?**(模型自加的英文标语、提示词原文、边缘说明文字)→ 文字段强调 render exactly these texts, each only once
 
 ## 发到公众号的注意
 
-- 这个 skill 原生出 21:9,和公众号 2.35:1 头图很接近,上传时裁剪框基本只切掉一点左右边缘,不会切到标题和水印。
+- 这个 skill 原生出 21:9,和公众号 2.35:1 头图很接近,上传时裁剪框基本只切掉一点左右边缘,不会切到标题。
 - 公众号转发小图是 1:1,裁剪框放在左侧"英文眉题 + 中文主标题"那一块。

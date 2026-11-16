@@ -7,6 +7,7 @@ import editorialPreview from './assets/cover-styles/editorial.webp'
 import campaignPreview from './assets/cover-styles/campaign.webp'
 import kineticPreview from './assets/cover-styles/kinetic.webp'
 import grungePreview from './assets/cover-styles/grunge.webp'
+import feltPreview from './assets/cover-styles/felt.webp'
 import { COVER_STYLES } from '../src/cover-styles.js'
 // 稿面：左边对话改稿，中间是稿子和纸边批注，右边是标题、朱雀质检和导出。
 import React from 'react'
@@ -699,7 +700,21 @@ function ChatPane({ article }) {
   )
 }
 
-const coverStylePreviews = { classic: classicPreview, editorial: editorialPreview, campaign: campaignPreview, kinetic: kineticPreview, grunge: grungePreview, magenta: magentaPreview }
+const coverStylePreviews = { classic: classicPreview, editorial: editorialPreview, campaign: campaignPreview, kinetic: kineticPreview, grunge: grungePreview, magenta: magentaPreview, felt: feltPreview }
+
+function CoverZoom({ scrim, target, src, maxWidth = 860 }) {
+  if (!scrim || !target || !src) return null
+  const box = scrim.getBoundingClientRect()
+  const anchor = target.getBoundingClientRect()
+  const clamp = (value, lo, hi) => Math.max(lo, Math.min(value, hi))
+  const width = Math.min(maxWidth, box.width - 32)
+  const height = width / 2.35 + 14
+  const left = clamp(anchor.left - box.left + anchor.width / 2 - width / 2, 12, box.width - width - 12)
+  let top = anchor.top - box.top - height - 10
+  if (top < 12) top = anchor.bottom - box.top + 10
+  top = clamp(top, 12, Math.max(12, box.height - height - 12))
+  return <div className="ws-cover-zoom" style={{ left, top, width }} aria-hidden="true"><img src={src} alt="" /></div>
+}
 
 function CoverOptionGroup({ label, name, options, value, onChange, disabled }) {
   return (
@@ -732,6 +747,8 @@ function CoverStyleDialog({ article }) {
   const [count, setCount] = React.useState(article.cover?.count ?? 1)
   const [format, setFormat] = React.useState(article.cover?.format ?? 'png')
   const [busy, setBusy] = React.useState(false)
+  const scrimRef = React.useRef(null)
+  const [zoom, setZoom] = React.useState(null)
   const effectiveFormat = formats.includes(format) ? format : 'png'
   const close = () => { if (!busy) setState({ dialog: null }) }
   const submit = async event => {
@@ -743,7 +760,7 @@ function CoverStyleDialog({ article }) {
     if (ok) setState({ dialog: null })
   }
   return (
-    <div className="ws-scrim" onMouseDown={event => { if (event.target === event.currentTarget) close() }}>
+    <div className="ws-scrim" ref={scrimRef} onMouseDown={event => { if (event.target === event.currentTarget) close() }}>
       <form className="ws-dialog ws-cover-dialog" role="dialog" aria-modal="true" aria-label="选择封面风格" onSubmit={submit}>
         <div className="ws-dialog-head">
           <h2 className="ws-dialog-title">选择封面风格</h2>
@@ -754,7 +771,8 @@ function CoverStyleDialog({ article }) {
             <legend>风格</legend>
             <div className="ws-cover-style-grid">
               {COVER_STYLES.map(item => (
-                <label className={`ws-choice ws-cover-style ${style === item.id ? 'is-on' : ''}`} key={item.id}>
+                <label className={`ws-choice ws-cover-style ${style === item.id ? 'is-on' : ''}`} key={item.id}
+                  onMouseEnter={event => setZoom({ el: event.currentTarget, src: coverStylePreviews[item.id] })} onMouseLeave={() => setZoom(null)}>
                   <input type="radio" aria-label={item.name} name="cover-style" value={item.id} checked={style === item.id} onChange={() => setStyle(item.id)} />
                   <span className="ws-cover-style-body">
                     <img src={coverStylePreviews[item.id]} alt="" />
@@ -783,17 +801,26 @@ function CoverStyleDialog({ article }) {
           <button type="submit" className="ws-btn is-primary" disabled={busy || !provider}>{busy ? '正在提交…' : '生成封面'}</button>
         </div>
       </form>
+      <CoverZoom scrim={scrimRef.current} target={zoom?.el} src={zoom?.src} maxWidth={560} />
     </div>
   )
 }
 
 const coverRunStatus = { running: '进行中', succeeded: '完成', partial: '部分完成', failed: '失败', interrupted: '已中断' }
 
+function CoverJobProgress({ job }) {
+  if (!job) return null
+  const stage = { prompt: '正在分析文章…', generating: '正在生成封面…', saving: '正在裁切并保存…' }
+  return <p className="ws-shimmer" role="status">{stage[job.stage]}{job.stage !== 'prompt' ? `（${job.index}/${job.count}）` : ''}</p>
+}
+
 function CoverHistoryDialog({ article }) {
   const pending = useStudio(s => s.pending)
   const runs = article.coverRuns ?? []
   const historyAvailable = Array.isArray(article.coverRuns)
   const [selectedId, setSelectedId] = React.useState(null)
+  const scrimRef = React.useRef(null)
+  const [zoom, setZoom] = React.useState(null)
   const run = runs.find(item => item.id === selectedId) ?? runs.at(-1)
   const styleName = item => COVER_STYLES.find(style => style.id === item.style)?.name ?? '封面'
   const dateLabel = value => new Date(value).toLocaleString('zh-CN', {
@@ -802,7 +829,7 @@ function CoverHistoryDialog({ article }) {
   const close = () => setState({ dialog: null })
   const imageUrl = id => `wechat-studio/cover/image?${new URLSearchParams({ id: article.id, asset: id })}`
   return (
-    <div className="ws-scrim" onMouseDown={event => { if (event.target === event.currentTarget) close() }}
+    <div className="ws-scrim" ref={scrimRef} onMouseDown={event => { if (event.target === event.currentTarget) close() }}
       onKeyDown={event => { if (event.key === 'Escape') close() }}>
       <section className="ws-dialog ws-cover-history" role="dialog" aria-modal="true" aria-label="封面生成记录">
         <div className="ws-dialog-head">
@@ -814,7 +841,7 @@ function CoverHistoryDialog({ article }) {
             <nav className="ws-history-list" aria-label="生成批次">
               {[...runs].reverse().map((item, index) => (
                 <button type="button" className={`ws-history-run ${run.id === item.id ? 'is-on' : ''}`}
-                  key={item.id} aria-pressed={run.id === item.id} onClick={() => setSelectedId(item.id)}>
+                  key={item.id} aria-pressed={run.id === item.id} onClick={() => { setZoom(null); setSelectedId(item.id) }}>
                   <strong>第 {runs.length - index} 次 · {styleName(item)}</strong>
                   <small>{dateLabel(item.createdAt)} · {item.images.length}/{item.count} 张</small>
                 </button>
@@ -826,10 +853,12 @@ function CoverHistoryDialog({ article }) {
                 <span className={`ws-history-status is-${run.status}`}>{coverRunStatus[run.status]}</span>
               </div>
               <p className="ws-history-meta">{[new Date(run.createdAt).toLocaleString('zh-CN'), run.model, run.resolution, run.format?.toUpperCase()].filter(Boolean).join(' · ')}</p>
+              <CoverJobProgress job={article.coverJob?.id === run.id ? article.coverJob : null} />
               <div className={`ws-history-images ${run.images.length > 1 ? 'is-grid' : ''}`}>
                 {run.images.map((image, index) => (
                   <figure key={image.id}>
-                    <img src={imageUrl(image.id)} alt={`封面 ${index + 1}`} loading="lazy" />
+                    <img src={imageUrl(image.id)} alt={`封面 ${index + 1}`} loading="lazy"
+                      onMouseEnter={event => setZoom({ el: event.currentTarget, src: imageUrl(image.id) })} onMouseLeave={() => setZoom(null)} />
                     <figcaption>
                       <span>封面 {index + 1}</span>
                       <div className="ws-history-image-actions">
@@ -860,6 +889,7 @@ function CoverHistoryDialog({ article }) {
           </div>
         )}
       </section>
+      <CoverZoom scrim={scrimRef.current} target={zoom?.el} src={zoom?.src} />
     </div>
   )
 }
@@ -869,7 +899,6 @@ function CoverPane({ article }) {
   const { cover, coverJob, coverError } = article
   const imageUrl = id => `wechat-studio/cover/image?${new URLSearchParams({ id: article.id, asset: id })}`
   const src = cover && imageUrl(cover.id)
-  const stage = { prompt: '正在分析文章…', generating: '正在生成封面…', saving: '正在裁切并保存…' }
   return (
     <section className="ws-sec">
       <div className="ws-sec-head">
@@ -885,7 +914,7 @@ function CoverPane({ article }) {
       <div className="ws-cover-preview">
         {cover ? <img src={src} alt={cover.title} /> : <span>封面图 · 2.35:1</span>}
       </div>
-      {coverJob ? <p className="ws-shimmer" role="status">{stage[coverJob.stage]}{coverJob.stage !== 'prompt' ? `（${coverJob.index}/${coverJob.count}）` : ''}</p> : null}
+      <CoverJobProgress job={coverJob} />
       {!coverJob && coverError ? <p className="ws-warn" role="status">{coverError}</p> : null}
       {cover ? <>
         <a className="ws-link" href={src + '&download=1'} download={`cover.${cover.format ?? 'png'}`}>下载封面</a>
@@ -1400,6 +1429,7 @@ function SettingsDialog() {
               <button key={item.id} type="button" aria-current={page === item.id ? 'page' : undefined}
                 onClick={() => setPage(item.id)}><Icon name={item.icon} /><span>{item.title}</span></button>
             ))}
+            {settings.version ? <span className="ws-settings-version">v{settings.version}</span> : null}
           </nav>
           <div className="ws-settings-content">
             <div className="ws-settings-section-head">

@@ -78,7 +78,7 @@ function DockCard({ draft, onPick, onDragStart }) {
   )
 }
 
-function ScheduledCard({ draft, now, onPick, onUnschedule, onDragStart }) {
+function ScheduledCard({ draft, now, onPick, onUnschedule, onPublish, onDragStart }) {
   const missing = draft.readiness.items.filter(i => !i.done)
   const overdue = new Date(draft.scheduledFor).getTime() < now
   return (
@@ -91,6 +91,7 @@ function ScheduledCard({ draft, now, onPick, onUnschedule, onDragStart }) {
       {missing.length ? <span className="ws-sched-missing">还差：{missing.map(i => i.label).join('、')}</span> : null}
       {overdue ? <span className="ws-sched-overdue">已过点，未标记发布</span> : null}
       <div className="ws-sched-entry-actions">
+        <button type="button" className="ws-link" onClick={() => onPublish(draft)}>标记已发</button>
         <button type="button" className="ws-link" onClick={() => onPick(draft)}>改期</button>
         <button type="button" className="ws-link" onClick={() => onUnschedule(draft)}>取消</button>
       </div>
@@ -165,6 +166,45 @@ function SchedulePicker({ data, picker, onClose }) {
   )
 }
 
+function NextUp({ data, onReschedule }) {
+  const [now, setNow] = React.useState(() => Date.now())
+  React.useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 30000); return () => clearInterval(timer) }, [])
+  const candidates = data.articles.filter(a => !a.archivedAt && !a.publishedAt && a.scheduledFor)
+    .sort((a, b) => a.scheduledFor.localeCompare(b.scheduledFor))
+  const next = candidates.find(a => new Date(a.scheduledFor).getTime() >= now) ?? null
+  const overdue = candidates.filter(a => new Date(a.scheduledFor).getTime() < now)
+  const target = next ?? overdue[0]
+  if (!target) return null
+  const at = new Date(target.scheduledFor).getTime()
+  const diff = at - now
+  const isToday = dayKey(new Date(at)) === dayKey(new Date(now))
+  const countdown = diff <= 0 ? '已过发布时间'
+    : diff < 3600000 ? `还有 ${Math.max(1, Math.round(diff / 60000))} 分钟`
+      : diff < 86400000 ? `还有 ${Math.floor(diff / 3600000)} 小时 ${Math.floor(diff % 3600000 / 60000)} 分`
+        : `还有 ${Math.floor(diff / 86400000)} 天 ${Math.floor(diff % 86400000 / 3600000)} 小时`
+  const publish = async () => { if (await act('articles/publish', { id: target.id })) toast('已标记发布。导入复盘数据后会自动对上这篇。') }
+  return (
+    <section className={`ws-sched-next ${diff <= 0 ? 'is-overdue' : ''}`} aria-label="下一篇要发的">
+      <CoverThumb draft={target} />
+      <div className="ws-sched-next-copy">
+        <span className="ws-muted ws-small">下一篇 · {weekdayName(new Date(at))} {timeLabel(target.scheduledFor)}</span>
+        <button type="button" className="ws-sched-next-title" onClick={() => openDraft(target)}>{target.title}</button>
+        <span className={diff <= 0 ? 'ws-warn' : 'ws-sched-count'}>{countdown}</span>
+      </div>
+      <div className="ws-sched-checklist">
+        {isToday || diff <= 0 ? <>
+          <button type="button" className="ws-btn" onClick={() => openDraft(target, 'layout')}>去排版复制</button>
+          {target.coverId ? <a className="ws-btn" href={coverUrl(target) + '&download=1'} download>下载封面</a> : <span className="ws-muted ws-small">还没有封面</span>}
+          <button type="button" className="ws-btn is-primary" onClick={publish}><Icon name="check" size={13} />标记已发</button>
+        </> : <>
+          <button type="button" className="ws-btn" onClick={() => onReschedule(target)}>改期</button>
+          <button type="button" className="ws-btn" onClick={publish}>提前标记已发</button>
+        </>}
+      </div>
+    </section>
+  )
+}
+
 export function ScheduleView({ data }) {
   const [weekOffset, setWeekOffset] = React.useState(0)
   const [picker, setPicker] = React.useState(null)
@@ -202,6 +242,7 @@ export function ScheduleView({ data }) {
   }
   const unschedule = async draft => { if (await act('schedule/clear', { id: draft.id })) toast('已取消排期，回到待排') }
   const pickFor = draft => setPicker({ id: draft.id, day: draft.scheduledFor ? dayKey(new Date(draft.scheduledFor)) : dayKey(today) })
+  const publish = async draft => { if (await act('articles/publish', { id: draft.id })) toast('已标记发布。导入复盘数据后会自动对上这篇。') }
   return (
     <main className="ws-sched">
       <header className="ws-sched-head">
@@ -223,6 +264,7 @@ export function ScheduleView({ data }) {
           <p className="ws-muted ws-small ws-sched-dock-hint">拖到右边某天即可排期；点「排期」可选时段。</p>
         </aside>
         <section className="ws-sched-main" aria-label="周日历">
+          <NextUp data={data} onReschedule={pickFor} />
           <div className="ws-sched-week">
             {days.map(date => {
               const key = dayKey(date)
@@ -234,7 +276,7 @@ export function ScheduleView({ data }) {
                   onDrop={e => { e.preventDefault(); dropOnDay(e.dataTransfer.getData('text/plain'), key) }}>
                   <header className="ws-sched-day-head"><span>{weekdayName(date)}</span><b>{date.getMonth() + 1}/{date.getDate()}</b></header>
                   <div className="ws-sched-day-list">
-                    {rows.scheduled.map(d => <ScheduledCard key={d.id} draft={d} now={now} onPick={pickFor} onUnschedule={unschedule} onDragStart={dragStart} />)}
+                    {rows.scheduled.map(d => <ScheduledCard key={d.id} draft={d} now={now} onPick={pickFor} onUnschedule={unschedule} onPublish={publish} onDragStart={dragStart} />)}
                     {rows.published.map(d => <PublishedCard key={d.id} draft={d} />)}
                     {!rows.scheduled.length && !rows.published.length ? (
                       <button type="button" className="ws-sched-empty" onClick={() => setPicker({ id: null, day: key })}><Icon name="plus" size={13} />排一篇</button>

@@ -25,6 +25,38 @@ async function upload(url, { cloudName, apiKey, apiSecret }, fetchImpl) {
   return result
 }
 
+export async function uploadInlineImage(image, config, { articleId, assetId }, fetchImpl = fetch) {
+  if (!config?.cloudName || !config.apiKey || !config.apiSecret) {
+    throw fail('请先在设置中配置 Cloudinary，再插入正文插图。', 400)
+  }
+  if (!Buffer.isBuffer(image) || image.toString('hex', 0, 8) !== '89504e470d0a1a0a') {
+    throw fail('本机插图文件无效，请重新生成后再试。', 400)
+  }
+  const { cloudName, apiKey, apiSecret } = config
+  const timestamp = String(Math.floor(Date.now() / 1000))
+  const suffix = createHash('sha256').update(`${articleId}:${assetId}`).digest('hex')
+  const publicId = `dsh-wechat-studio/inline-${suffix}`
+  const signature = createHash('sha256').update(`overwrite=true&public_id=${publicId}&timestamp=${timestamp}${apiSecret}`).digest('hex')
+  const form = new FormData()
+  for (const [key, value] of Object.entries({ api_key: apiKey, timestamp, signature, public_id: publicId, overwrite: 'true' })) {
+    form.set(key, value)
+  }
+  form.set('file', new Blob([image], { type: 'image/png' }), `${assetId}.png`)
+  const res = await fetchImpl(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+    method: 'POST', body: form, signal: AbortSignal.timeout(30_000), redirect: 'error',
+  })
+  if (!res.ok) {
+    await res.body?.cancel().catch(() => {})
+    if (res.status === 401 || res.status === 403) throw fail('Cloudinary 鉴权失败，请检查 API Key 和 API Secret。')
+    throw fail(`Cloudinary 上传插图失败（HTTP ${res.status}），请重试；同一插图重传会覆盖同一图床资源。`)
+  }
+  const { secure_url: result } = await res.json()
+  if (typeof result !== 'string' || !/^https:\/\/res\.cloudinary\.com\/[a-zA-Z0-9_.~%/,-]+$/.test(result)) {
+    throw fail('Cloudinary 没有返回可验证的 HTTPS 插图地址，请重试。')
+  }
+  return result
+}
+
 export async function transferFeishuImages(urls, config, progress, fetchImpl = fetch) {
   if (!config?.cloudName || !config.apiKey || !config.apiSecret) {
     throw fail('请先在设置中配置 Cloudinary，再重试图片转存。', 400)

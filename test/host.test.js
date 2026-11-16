@@ -10,6 +10,7 @@ import { checkBanner, detectionText, renderLayout } from '../src/layout.js'
 import { bannerGuide, normalizeSpec } from '../src/banner.js'
 import { markBlocks, pdfToText } from '../src/report.js'
 import { Pipeline } from '../src/pipeline.js'
+import { readInlineImage, saveInlineImage } from '../src/inline-assets.js'
 import { Store } from '../src/store.js'
 import { publicSettings, readSettings, updateSettings } from '../src/settings.js'
 import { DEFAULT_ENDPOINT, detect, mapSegments } from '../src/zhuque.js'
@@ -179,12 +180,16 @@ test('流水线：写正文 → 出标题 → 对话改稿 → 读报告 → 改
   const services = { llm, agentDefaultModel: { currentSelection: () => ({ provider: 'p', model: 'm' }) } }
   const pipeline = new Pipeline({ ctx: { get: name => services[name] }, store })
   const article = createArticle({ topic: '选题' })
+  const obsoleteAsset = await saveInlineImage(store.root, Buffer.from('89504e470d0a1a0a00000000', 'hex'))
+  article.inlineDiagrams = [{ id: 'obsolete', anchorId: 'old-block', status: 'generated', assetId: obsoleteAsset, format: 'png' }]
   await store.update(state => { state.articles.push(article); state.currentId = article.id })
 
   await pipeline.draft(article.id)
   let saved = (await store.read()).articles[0]
   assert.equal(saved.title, '草稿标题')
   assert.equal(saved.blocks.length, 2)
+  assert.deepEqual(saved.inlineDiagrams, [])
+  await assert.rejects(readInlineImage(store.root, obsoleteAsset), { code: 'ENOENT' })
   assert.deepEqual(saved.titles.map(t => t.text), ['标题甲', '标题乙'])
 
   const untouched = saved.blocks[0].text

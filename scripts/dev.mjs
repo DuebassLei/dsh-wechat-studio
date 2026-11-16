@@ -7,7 +7,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
-process.env.DSH_HOME = join(root, '.dev')
+process.env.DSH_HOME ||= join(root, '.dev')
 const { createHandler } = await import('../src/host.js')
 
 const DRAFT = `# 排版交给 AI 后，我再没开过编辑器
@@ -46,6 +46,14 @@ const replies = {
     const blocks = [...user.split('# 文章段落').pop().matchAll(/【(\d+)】/g)].map(m => Number(m[1]))
     return JSON.stringify({ overall: { human: 62, suspect: 31, ai: 7 }, segments: [{ block: blocks[1], score: 0.93 }, { block: blocks.at(-2), score: 0.56 }].filter(row => row.block) })
   },
+  'inline-diagrams': user => {
+    const article = JSON.parse(user)
+    if (article.title.includes('短稿无图')) return JSON.stringify({ suggestions: [] })
+    return JSON.stringify({ suggestions: article.blocks.filter(item => item.kind === 'para').slice(0, 3).map((block, index) => ({
+      anchorId: block.id, kind: ['concept', 'flow', 'architecture'][index % 3], title: ['排版概念关系', '公众号排版流程', '工具组件分工'][index % 3],
+      reason: '帮读者看清关键内容和处理顺序。', brief: '三个节点：Markdown 原稿 → 排版流程 → 公众号成稿，箭头从左到右。',
+    })) })
+  },
 }
 
 const llm = {
@@ -78,7 +86,14 @@ const services = {
 // 假的朱雀接口：密钥填 bad 报 401；含「不仅」的那行判 AI，含「值得一提」的判疑似，其余判人工
 const fetchImpl = async (url, init) => {
   const send = (status, body) => ({ ok: status < 300, status, text: async () => JSON.stringify(body) })
-  if (init.headers.authorization === 'Bearer bad') return send(401, { error: { message: 'invalid api key' } })
+  if (url === 'https://ark.cn-beijing.volces.com/api/v3/images/generations') {
+    const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
+    return { ok: true, status: 200, json: async () => ({ data: [{ b64_json: png }] }) }
+  }
+  if (url === 'https://api.cloudinary.com/v1_1/demo/image/upload') {
+    return Response.json({ secure_url: 'https://res.cloudinary.com/demo/image/upload/v1/inline-demo.png' })
+  }
+  if (init.headers?.authorization === 'Bearer bad') return send(401, { error: { message: 'invalid api key' } })
   const lines = JSON.parse(init.body).text.split('\n').filter(line => line.trim())
   const segment_labels = lines.map((text, order) => ({ text, order, label: text.includes('不仅') ? 1 : text.includes('值得一提') ? 2 : 0, conf: text.includes('不仅') ? 0.97 : text.includes('值得一提') ? 0.71 : 0.9 }))
   return send(200, { status: 'success', labels_ratio: { 0: 0.62, 1: 0.21, 2: 0.17 }, segment_labels, makers_models_usage: { total_tokens: Math.round(JSON.parse(init.body).text.length * 1.2) } })

@@ -34,6 +34,7 @@ dsh plugin --profile desktop add "$PWD"
 | 编辑正文 | 直接编辑段落，或在对话里指定要修改的段落。支持卡片插入、正文目录、本机暂存、版本对比和恢复。 |
 | 朱雀质检 | 通过 API 检测，或导入朱雀 PDF 报告。纸边批注可定位待处理段落，支持单段改写和批量处理。 |
 | 封面生成 | 选择六套内置风格之一，通过火山方舟或阿里云百炼生成封面。可以从生成历史中选用已有封面。 |
+| 正文插图 | 在「配图」页分析整篇或指定段落，确认建议后选择风格生成单张插图。预览并确认位置后才上传图床、插入 Markdown 图片；生成和上传阶段都不会自动改正文。可删除失效或已忽略记录；整篇重写会清空旧锚点记录。 |
 | 公众号排版 | 选择正文风格、配色、开头横幅和文末关注卡。预览支持 10 套正文风格和 15 套配色。 |
 | 复制到公众号 | 在排版预览中点「复制全文到公众号」，然后粘贴到公众号编辑器。按自查报告处理外部图片和视频占位。 |
 
@@ -63,11 +64,11 @@ dsh plugin --profile desktop add "$PWD"
 
 | 服务 | 用途 | 配置入口 |
 | --- | --- | --- |
-| DeepSeek Harness 模型 | 写稿、改稿、标题、横幅和封面提示词 | 在宿主配置模型，然后在插件里选择。 |
+| DeepSeek Harness 模型 | 写稿、改稿、标题、横幅、封面提示词和正文插图建议 | 在宿主配置模型，然后在插件里选择。 |
 | 朱雀 API | 在线检测正文 | 在 EdgeOne Makers 的 Models → API Key 创建密钥，在插件「设置 → 朱雀质检」测试并保存。也可直接上传报告 PDF。 |
-| 火山方舟 | 生成封面图（Doubao Seedream） | 在「设置 → 封面生成」选择提供方为火山方舟，填写 API Key 并选择生图模型。 |
-| 阿里云百炼 | 生成封面图（通义万相 / 千问图像，仅 PNG） | 在「设置 → 封面生成」选择阿里云百炼，填写中国内地（北京）的 API Key 并选择生图模型。 |
-| Cloudinary | 转存飞书 Markdown 中的授权下载图片 | 在「设置 → 图片图床」填写 Cloud Name、API Key 和 API Secret。 |
+| 火山方舟 | 生成封面图和正文插图（Doubao Seedream） | 在「设置 → 封面生成」选择提供方为火山方舟，填写 API Key 并选择生图模型。 |
+| 阿里云百炼 | 生成封面图和正文插图（通义万相 / 千问图像，仅 PNG） | 在「设置 → 封面生成」选择阿里云百炼，填写中国内地（北京）的 API Key 并选择生图模型。 |
+| Cloudinary | 转存飞书图片，并在确认插入正文插图时取得可发表的 HTTPS 地址 | 在「设置 → 图片图床」填写 Cloud Name、API Key 和 API Secret。 |
 
 导入飞书 Markdown 后，图片会在后台转存，成功后正文使用 Cloudinary 的可访问地址。如果失败，可以在稿面重试。飞书链接过期时，请重新从飞书复制 Markdown。
 
@@ -83,13 +84,16 @@ dsh plugin --profile desktop add "$PWD"
 | `settings.json` | 插件设置和服务凭证 |
 | `insights.json` | 复盘导入数据、匹配、题材和写作尝试 |
 | `covers/` | 生成的封面图片 |
-| `skills/` | 用户覆盖技能，以及确认写入的复盘规则 |
+| `inline-images/` | 已生成但独立保存的正文插图 PNG 资产；重画、删除记录、整篇重写或删稿时清理不再引用的文件，Host 启动时在状态文件有效的前提下清理崩溃遗留的孤儿文件 |
+| `skills/` | 用户覆盖技能、插图风格扩展，以及确认写入的复盘规则 |
 
 未保存的段落文字和上次编辑位置保存在当前宿主的本地存储中。调用模型、朱雀、火山方舟、阿里云百炼或 Cloudinary 时，相应任务的数据会发送给所用服务。
 
 可覆盖的内置技能包括 [写作](skills/writer.md)、[标题](skills/headline.md)、[去 AI 味](skills/humanizer.md)、[朱雀流程](skills/zhuque.md)和[开头横幅](skills/banner.md)。将同名文件放进数据目录的 `skills/`，下一次调用就会读取该版本。
 
 [封面技能](skills/linyuebanzi-cover-banner/SKILL.md)从插件内置目录读取。风格模板与禁用词表位于同目录的 [references](skills/linyuebanzi-cover-banner/references/)，封面生成时会重新读取。
+
+[正文插图技能](skills/linyuebanzi-inline-diagram/SKILL.md)保留完整目录结构，包含提示词模板、示例和全部风格文件。应用分析只读取 `references/analysis-contract.md` 并剥离 frontmatter，不执行原 skill 中的外部脚本；生图读取 `references/styles/`。将 `linyuebanzi-inline-diagram/` 放进数据目录的 `skills/` 后可以覆盖这些文件；新增符合 `小写字母-短横线.md` 命名的风格文件，就会自动出现在生成对话框中，无需修改 JavaScript。风格列表按文件变化缓存，单个文件不可读时跳过并在配图页提示，不影响其他功能。生成对话框以画廊显示原 skill 仓库的成品预览，预览图缩至 640px 宽并以内联 WebP 打包，源文件与封面一样放在 `client/assets/inline-styles/`；扩展风格没有内置预览时显示名称和回退卡片。
 
 ## 开发
 

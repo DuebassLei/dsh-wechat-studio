@@ -20,4 +20,5 @@ export const MAX_COVER_COUNT = 4
 // 百炼只回 PNG；带参考图时万相的 1K/2K 缩写会跟随参考图比例，所以统一显式传宽*高，
 // 比例取 47:20，和 saveCover 的裁切一致，避免中心裁切切掉构图。
 export const BAILIAN_SIZES = { '1K': '1504*640', '1.5K': '1880*800', '2K': '2048*872' }
+export const INLINE_IMAGE_SIZES = { ark: '2048x1152', bailian: '2048*1152' }
 export const providerFormats = provider => (provider === 'bailian' ? ['png'] : COVER_FORMATS)

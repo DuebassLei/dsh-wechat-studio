@@ -4,6 +4,7 @@ import { callModel, cleanMarkdown, extractJson, loadSkill } from './ai.js'
 import { applyOps, fixGroups, fixPlan, HOOK_IDS, numbered, setBody, snapshot, toMarkdown, touch } from './article.js'
 import { BANNER_STYLES, bannerGuide, bannerRules, DEFAULT_BANNER, normalizeSpec } from './banner.js'
 import { checkBanner, detectionText } from './layout.js'
+import { removeInlineImages } from './inline-assets.js'
 import { applyReport, markBlocks } from './report.js'
 import { detect, mapSegments } from './zhuque.js'
 
@@ -105,13 +106,16 @@ export class Pipeline {
       const system = `${await loadSkill('writer', this.skillsDir)}\n\n${DRAFT_RULES}`
       const user = `选题：${article.topic || '（作者没有写选题，请从素材里提炼）'}\n\n素材：\n${article.material || '（没有额外素材）'}`
       const text = await callModel(this.ctx, { system, user, task: 'draft', maxTokens: 12000, onText: delta => { job.text += delta } })
-      await this.store.update(state => {
+      const discarded = await this.store.update(state => {
         const target = state.articles.find(a => a.id === articleId)
-        if (!target) return
+        if (!target) return []
+        const previous = target.inlineDiagrams ?? []
         setBody(target, cleanMarkdown(text))
         target.notice = null
         touch(target)
+        return previous
       })
+      await removeInlineImages(this.store.root, discarded).catch(() => {})
       job.kind = 'titles'
       job.label = '出标题'
       job.text = ''

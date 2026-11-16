@@ -1,4 +1,4 @@
-import { blockKind, plainOf, splitMarkdown } from '../src/article.js'
+import { blockKind, parseMarkdownImage, plainOf, splitMarkdown } from '../src/article.js'
 import { countMarkdownImages, feishuImageUrls } from '../src/markdown-images.js'
 import magentaPreview from './assets/cover-styles/magenta.webp'
 import { COVER_PROVIDERS, modelsFor, providerFormats, COVER_RESOLUTIONS, MAX_COVER_COUNT } from '../src/cover-options.js'
@@ -11,8 +11,9 @@ import { COVER_STYLES } from '../src/cover-styles.js'
 // 稿面：左边对话改稿，中间是稿子和纸边批注，右边是标题、朱雀质检和导出。
 import React from 'react'
 import { cardMarkdown, emphasisFormats, formatSelection, insertFormats } from './editor-format.js'
-import { act, copyDetectionText, copyMarkdown, copyText, getState, loadLayout, loadModels, loadRevisions, loadSettings, loadSkills, rememberArticleView, saveSettings, setState, testZhuque, toast, uploadReport, useStudio } from './state.js'
+import { act, copyDetectionText, copyMarkdown, copyText, countCurrentParagraphDrafts, getState, loadLayout, loadModels, loadRevisions, loadSettings, loadSkills, rememberArticleView, saveSettings, setState, testZhuque, toast, uploadReport, useStudio } from './state.js'
 import { InsightsView } from './insights.jsx'
+import { InlineDiagramDialog, InlineDiagramPane } from './inline-diagrams.jsx'
 
 const ICONS = {
   check: 'M3 8.5l3.2 3.2L13 5',
@@ -121,8 +122,8 @@ function BlockBody({ block, sectionNumber }) {
   }
   if (kind === 'list') return <div className="ws-list">{text.split('\n').map((line, i) => <div key={i}>{inline(line)}</div>)}</div>
   if (kind === 'media') {
-    const image = /^!\[([^\]]*)\]\(<?([^\s>)]+)>?(?:\s+"([^"]*)")?\)\s*$/.exec(text)
-    if (image) return <PaperImage key={image[2]} src={image[2]} caption={image[1]} long={image[3]?.toLowerCase() === 'long'} />
+    const image = parseMarkdownImage(text)
+    if (image) return <PaperImage key={image.src} src={image.src} caption={image.caption} long={image.title.toLowerCase() === 'long'} />
     return <div className="ws-media">{text}</div>
   }
   if (kind === 'rule') return <hr className="ws-rule" />
@@ -146,6 +147,10 @@ function draftsFor(articleId) {
     paragraphDrafts.set(articleId, new Map(entries))
   }
   return paragraphDrafts.get(articleId)
+}
+
+function unsavedParagraphCount(article) {
+  return countCurrentParagraphDrafts(article.blocks, draftsFor(article.id))
 }
 
 function trackParagraphDraft(articleId, id, draft) {
@@ -1009,7 +1014,7 @@ function QualityPane({ article, ready, reviewTarget, onReviewJump }) {
 
 const SIDE_TABS = [['article', '文章'], ['images', '配图'], ['quality', '质检']]
 
-function SidePane({ article, tab, onTab, tabId, flagged, retest, ready, reviewTarget, onReviewJump }) {
+function SidePane({ article, tab, onTab, tabId, flagged, retest, ready, reviewTarget, onReviewJump, cloudinaryReady, unsavedCount }) {
   const pendingCount = flagged + retest
   return <aside className="ws-side" aria-label="稿面工具">
     <div className="ws-side-tabs">
@@ -1033,10 +1038,7 @@ function SidePane({ article, tab, onTab, tabId, flagged, retest, ready, reviewTa
       aria-labelledby={tabId + '-' + id} className="ws-side-content" hidden={tab !== id} tabIndex={0}>
       {id === 'article' ? <ArticleInfoPane article={article} /> : id === 'images' ? <>
         <CoverPane article={article} />
-        <section className="ws-sec ws-side-placeholder">
-          <h2 className="ws-pane-title">正文插图</h2>
-          <p className="ws-muted ws-small">正文插图建议将在这里显示。</p>
-        </section>
+        <InlineDiagramPane article={article} cloudinaryReady={cloudinaryReady} onReviewJump={onReviewJump} unsavedCount={unsavedCount} />
       </> : <QualityPane article={article} ready={ready} reviewTarget={reviewTarget} onReviewJump={onReviewJump} />}
     </div>)}
   </aside>
@@ -1327,7 +1329,8 @@ function ModelDialog() {
 
 function SettingsDialog() {
   const settings = useStudio(s => s.settings)
-  const [page, setPage] = React.useState('brand')
+  const settingsPage = useStudio(s => s.settingsPage)
+  const [page, setPage] = React.useState(settingsPage ?? 'brand')
   const [cloudinary, setCloudinary] = React.useState({})
   const [brand, setBrand] = React.useState({})
   const [arkModel, setArkModel] = React.useState(null)
@@ -1341,7 +1344,7 @@ function SettingsDialog() {
   const [test, setTest] = React.useState(null)
   const [busy, setBusy] = React.useState(false)
   React.useEffect(() => { loadSettings() }, [])
-  const close = () => setState({ dialog: null })
+  const close = () => setState({ dialog: null, settingsPage: null })
   if (!settings) return <div className="ws-scrim"><div className="ws-dialog"><span className="ws-shimmer">正在读取设置…</span></div></div>
   const providerValue = coverProvider ?? settings.coverProvider
   const isBailian = providerValue === 'bailian'
@@ -1511,6 +1514,7 @@ const SKILL_INFO = {
   zhuque: { name: '朱雀流程', use: '按报告逐段改，什么时候停手' },
   banner: { name: '开头横幅', use: '按文章写横幅规格' },
   cover: { name: '封面生成', use: '按文章和所选风格填写封面提示词。技能、六套风格模板和禁用词表都在内置技能目录。' },
+  'inline-diagram': { name: '正文插图', use: '识别插图位置，从技能目录动态读取全部风格。可在覆盖目录中增加或覆盖风格文件。' },
 }
 
 function Rail({ module }) {
@@ -1549,7 +1553,7 @@ function SkillsView() {
   return (
     <div className="ws-page">
       <h1 className="ws-page-title">技能</h1>
-      <p className="ws-page-lead">这里显示插件当前使用的技能。写作、标题、去 AI 味、朱雀流程和开头横幅可以通过下方目录覆盖。封面生成从内置技能目录读取。</p>
+      <p className="ws-page-lead">这里显示插件当前使用的技能。写作、标题、去 AI 味、朱雀流程和开头横幅可以通过下方目录覆盖。封面和正文插图使用目录式技能；正文插图支持在覆盖目录中增加或覆盖风格。</p>
       <div className="ws-skill-list">
         {skills.skills.map(item => (
           <div className="ws-skill" key={item.name}>
@@ -1656,6 +1660,7 @@ function RevisionDialog({ article, blockId }) {
 function PaperModule({ data }) {
   const view = useStudio(s => s.view)
   const chatOpen = useStudio(s => s.chatOpen)
+  useStudio(s => s.draftVersion)
   const [review, setReview] = React.useState(null)
   const [side, setSide] = React.useState(null)
   const sideTabId = React.useId()
@@ -1722,7 +1727,7 @@ function PaperModule({ data }) {
       <div className={`ws-body ${chatOpen && view !== 'layout' ? '' : 'no-chat'}`}>
         {chatOpen && view !== 'layout' ? <ChatPane article={article} /> : null}
         <main className="ws-main">{view === 'layout' ? <LayoutView article={article} /> : <Paper article={article} reviewTarget={reviewTarget} />}</main>
-        {view === 'paper' ? <SidePane key={article.id} article={article} tab={sideTab} onTab={selectSideTab} tabId={sideTabId} flagged={flagged} retest={retest} ready={data.zhuqueReady} reviewTarget={reviewTarget} onReviewJump={jumpToReview} /> : null}
+        {view === 'paper' ? <SidePane key={article.id} article={article} tab={sideTab} onTab={selectSideTab} tabId={sideTabId} flagged={flagged} retest={retest} ready={data.zhuqueReady} reviewTarget={reviewTarget} onReviewJump={jumpToReview} cloudinaryReady={data.cloudinaryReady} unsavedCount={unsavedParagraphCount(article)} /> : null}
       </div>
     </>
   )
@@ -1844,6 +1849,7 @@ export function Studio() {
       {dialog === 'block-revision' && data?.current ? <RevisionDialog key={revisionBlockId} article={data.current} blockId={revisionBlockId} /> : null}
       {dialog === 'cover-history' && data?.current ? <CoverHistoryDialog key={data.current.id} article={data.current} /> : null}
       {dialog === 'cover' && data?.current ? <CoverStyleDialog key={data.current.id} article={data.current} /> : null}
+      {dialog?.type === 'inline-diagram' && data?.current ? <InlineDiagramDialog key={`${data.current.id}:${dialog.mode}:${dialog.diagramId ?? 'blocks'}`} article={data.current} cloudinaryReady={data.cloudinaryReady} /> : null}
       {dialog === 'new' ? <NewDialog /> : null}
       {dialog === 'settings' ? <SettingsDialog /> : null}
       {dialog === 'model' ? <ModelDialog /> : null}

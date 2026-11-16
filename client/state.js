@@ -3,6 +3,10 @@ import React from 'react'
 
 const BASE = 'wechat-studio/'
 
+export function countCurrentParagraphDrafts(blocks, drafts) {
+  return blocks.filter(block => drafts.has(block.id)).length
+}
+
 let snap = { data: null, error: null, view: 'paper', paperHome: true, dialog: null, toast: null, editing: null, layout: null, pending: null, chatOpen: true, bannerTried: {}, module: 'paper', skills: null, settings: null, insights: null, insightsRange: 'all', insightsError: null, insightsRulePreview: null }
 const listeners = new Set()
 let timer = null
@@ -50,7 +54,7 @@ function accept(data) {
   const layout = snap.layout?.key === bodyKey(current, data.brand) ? snap.layout : null
   setState({ data, error: null, layout })
   clearTimeout(timer)
-  if (current?.job || current?.coverJob || current?.imageImport?.total) timer = setTimeout(refresh, 900)
+  if (current?.job || current?.coverJob || current?.inlineDiagramJob || current?.imageImport?.total) timer = setTimeout(refresh, 900)
 }
 
 export async function refresh() {

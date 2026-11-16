@@ -10,12 +10,12 @@ const run = promisify(execFile)
 const portrait = 'https://r2.cloudnative101.net/ScreenShot_2026-04-17_135957_070.png'
 const MAX_IMAGE = 24 * 1024 * 1024
 
-export async function generateArkCover(prompt, { apiKey, model, resolution, format }, fetchImpl = fetch) {
+export async function generateArkCover(prompt, { apiKey, model, resolution, format, referenceImage = portrait, subject = '封面' }, fetchImpl = fetch) {
   const res = await fetchImpl('https://ark.cn-beijing.volces.com/api/v3/images/generations', {
     method: 'POST', redirect: 'error', signal: AbortSignal.timeout(180_000),
     headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
     body: JSON.stringify({
-      model, prompt, image: portrait, size: resolution,
+      model, prompt, ...(referenceImage ? { image: referenceImage } : {}), size: resolution,
       response_format: 'b64_json', output_format: format, background: 'opaque', watermark: false,
     }),
   })
@@ -29,7 +29,7 @@ export async function generateArkCover(prompt, { apiKey, model, resolution, form
   }
   const { data } = await res.json()
   const encoded = data?.[0]?.b64_json
-  if (typeof encoded !== 'string' || encoded.length > MAX_IMAGE * 4 / 3) throw new Error('火山方舟未返回可保存的封面。')
+  if (typeof encoded !== 'string' || encoded.length > MAX_IMAGE * 4 / 3) throw new Error(`火山方舟未返回可保存的${subject}。`)
   const image = Buffer.from(encoded, 'base64')
   const valid = format === 'jpeg'
     ? image.toString('hex', 0, 3) === 'ffd8ff'
@@ -38,16 +38,17 @@ export async function generateArkCover(prompt, { apiKey, model, resolution, form
   return image
 }
 
-export async function generateBailianCover(prompt, { apiKey, model, resolution }, fetchImpl = fetch) {
+export async function generateBailianCover(prompt, { apiKey, model, resolution, referenceImage = portrait, size: explicitSize, subject = '封面' }, fetchImpl = fetch) {
   // 万相和千问图像共用同一个多模态同步接口，换 model 即可；万相不支持 prompt_extend，只给千问关掉自动扩写。
-  const parameters = { size: BAILIAN_SIZES[resolution], n: 1, watermark: false }
+  const parameters = { size: explicitSize ?? BAILIAN_SIZES[resolution], n: 1, watermark: false }
   if (model.startsWith('qwen-image')) parameters.prompt_extend = false
+  const content = [...(referenceImage ? [{ image: referenceImage }] : []), { text: prompt }]
   const res = await fetchImpl('https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation', {
     method: 'POST', redirect: 'error', signal: AbortSignal.timeout(180_000),
     headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
     body: JSON.stringify({
       model,
-      input: { messages: [{ role: 'user', content: [{ image: portrait }, { text: prompt }] }] },
+      input: { messages: [{ role: 'user', content }] },
       parameters,
     }),
   })
@@ -61,15 +62,15 @@ export async function generateBailianCover(prompt, { apiKey, model, resolution }
   const data = await res.json()
   // 百炼回的是 24 小时有效的 PNG 链接，要再下载成字节才能落盘裁切。
   const url = data?.output?.choices?.[0]?.message?.content?.find(part => typeof part?.image === 'string')?.image
-  if (typeof url !== 'string') throw new Error('百炼未返回可保存的封面。')
+  if (typeof url !== 'string') throw new Error(`百炼未返回可保存的${subject}。`)
   const imageUrl = URL.canParse(url) ? new URL(url) : null
-  if (imageUrl?.protocol !== 'https:' || imageUrl.username || imageUrl.password) throw new Error('百炼返回了无效的 HTTPS 封面地址。')
+  if (imageUrl?.protocol !== 'https:' || imageUrl.username || imageUrl.password) throw new Error(`百炼返回了无效的 HTTPS ${subject}地址。`)
   const imageRes = await fetchImpl(url, { redirect: 'error', signal: AbortSignal.timeout(60_000) })
   if (!imageRes.ok || !imageRes.body) {
     await imageRes.body?.cancel().catch(() => {})
-    throw new Error('百炼封面下载失败，请重试。')
+    throw new Error(`百炼${subject}下载失败，请重试。`)
   }
-  const tooLarge = () => new Error('百炼封面超过 24 MB，试试降低分辨率。')
+  const tooLarge = () => new Error(`百炼${subject}超过 24 MB，试试降低分辨率。`)
   if (Number(imageRes.headers.get('content-length')) > MAX_IMAGE) {
     await imageRes.body.cancel().catch(() => {})
     throw tooLarge()
@@ -83,7 +84,7 @@ export async function generateBailianCover(prompt, { apiKey, model, resolution }
     chunks.push(chunk)
   }
   const image = Buffer.concat(chunks, size)
-  if (image.toString('hex', 0, 8) !== '89504e470d0a1a0a') throw new Error('百炼未返回有效的 PNG 封面。')
+  if (image.toString('hex', 0, 8) !== '89504e470d0a1a0a') throw new Error(`百炼未返回有效的 PNG ${subject}。`)
   return image
 }
 

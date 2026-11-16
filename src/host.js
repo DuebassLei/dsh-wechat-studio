@@ -2,11 +2,15 @@ import { randomUUID } from 'node:crypto'
 import { COVER_RESOLUTIONS, COVER_FORMATS, MAX_COVER_COUNT, providerFormats } from './cover-options.js'
 // dsh-wechat-studio host 半片：/wechat-studio/* 接口。
 import { join } from 'node:path'
+import { readFile } from 'node:fs/promises'
 import { defaultSelection, listModels, modelInfo, modelOverride, modelStatus, setModelOverride, skillSources } from './ai.js'
 import { BANNER_CHOICES, BANNER_STYLES, DEFAULT_BANNER } from './banner.js'
 import { blockKind, createArticle, fixPlan, HOOK_IDS, isCheckable, listMeta, newId, revisionChanges, snapshot, splitMarkdown, toMarkdown, touch, undo } from './article.js'
-import { transferFeishuImages } from './cloudinary.js'
+import { transferFeishuImages, uploadInlineImage } from './cloudinary.js'
 import { feishuImageUrls, replaceFeishuImages } from './markdown-images.js'
+import { generateInlineImage, readInlineAsset, readInlineImage, removeInlineImages, removeOrphanInlineImages, saveInlineImage } from './inline-assets.js'
+import { analyzeInlineDiagrams, DIAGRAM_KINDS, insertDiagramBlock, sourceHash } from './inline-diagrams.js'
+import { loadInlineStyle, readInlineStyleCatalog } from './inline-skill.js'
 import { coverPrompt, generateArkCover, generateBailianCover, readCover, saveCover } from './cover.js'
 import { COVER_STYLES } from './cover-styles.js'
 import { STYLES, THEMES, detectionText, renderLayout } from './layout.js'
@@ -61,6 +65,7 @@ async function insightsView(deps, range = 'all') {
 
 const imageJobs = new WeakMap()
 const coverJobs = new WeakMap()
+const diagramJobs = new WeakMap()
 
 function coverJobMap(store) {
   if (!coverJobs.has(store)) coverJobs.set(store, new Map())
@@ -125,6 +130,171 @@ function startCover(deps, article, apiKey, options) {
   void run().catch(() => { article.coverError = '保存封面状态失败，请重试。' }).finally(() => jobs.delete(article.id))
 }
 
+function diagramJobMap(store) {
+  if (!diagramJobs.has(store)) diagramJobs.set(store, new Map())
+  return diagramJobs.get(store)
+}
+
+function activeInlineArticle(state, id) {
+  const article = mustFind(state, id)
+  if (article.archivedAt) throw Object.assign(new Error('归档稿件不能操作插图，请先恢复。'), { status: 409 })
+  return article
+}
+
+function inlineRecord(article, diagramId) {
+  const diagram = article.inlineDiagrams?.find(item => item.id === diagramId)
+  if (!diagram) throw Object.assign(new Error('这条插图建议不存在'), { status: 404 })
+  return diagram
+}
+
+function inlineAnchorOccupied(article, diagram, anchorId) {
+  return article.inlineDiagrams?.some(item => item.id !== diagram.id && item.anchorId === anchorId && item.status !== 'ignored')
+}
+
+function inlineDiagramView(article, store) {
+  const job = diagramJobMap(store).get(article.id)
+  return (article.inlineDiagrams ?? []).map(diagram => {
+    const anchorIndex = article.blocks.findIndex(block => block.id === diagram.anchorId)
+    const insertedIndex = article.blocks.findIndex(block => block.id === diagram.insertedBlockId && Boolean(diagram.publicUrl) && block.text.includes(diagram.publicUrl))
+    let status = diagram.status
+    if (status === 'generating' && (job?.kind !== 'generate' || job.diagramId !== diagram.id)) status = 'interrupted'
+    if (status === 'inserted' && insertedIndex === -1) status = diagram.assetId ? 'generated' : 'suggested'
+    return {
+      ...diagram,
+      status,
+      anchorNumber: anchorIndex === -1 ? null : anchorIndex + 1,
+      anchorExcerpt: anchorIndex === -1 ? null : article.blocks[anchorIndex].text.replace(/\s+/g, ' ').slice(0, 100),
+      currentAnchorHash: anchorIndex === -1 ? null : sourceHash(article.blocks[anchorIndex].text),
+      stale: anchorIndex !== -1 && sourceHash(article.blocks[anchorIndex].text) !== diagram.sourceHash,
+      insertedBlockNumber: insertedIndex === -1 ? null : insertedIndex + 1,
+      insertedBlockExists: insertedIndex !== -1,
+    }
+  })
+}
+
+function inlineError(err, action) {
+  if (err.name === 'TimeoutError' || err.name === 'AbortError') return `${action}超时，请重试。`
+  return err.message || `${action}失败，请重试。`
+}
+
+function startInlineJob(deps, articleId, job, run) {
+  const { store } = deps
+  const jobs = diagramJobMap(store)
+  if (jobs.has(articleId)) throw Object.assign(new Error('这篇稿件已有一项插图任务进行中。'), { status: 409 })
+  jobs.set(articleId, job)
+  const execute = async () => {
+    try {
+      await run(job)
+    } catch (err) {
+      await store.update(state => {
+        const article = state.articles.find(item => item.id === articleId)
+        if (!article) return
+        const message = inlineError(err, job.kind === 'generate' ? '插图生成' : job.kind === 'insert' ? '插图上传或插入' : '正文分析')
+        article.inlineMessage = { error: true, text: message, at: new Date().toISOString() }
+        if (job.kind === 'generate') {
+          const diagram = article.inlineDiagrams?.find(item => item.id === job.diagramId)
+          if (diagram) {
+            diagram.status = 'failed'
+            diagram.error = message
+          }
+        }
+      }).catch(() => {})
+    } finally {
+      jobs.delete(articleId)
+    }
+  }
+  void execute()
+}
+
+function startInlineAnalysis(deps, articleId, blockId) {
+  startInlineJob(deps, articleId, { kind: 'analyze', stage: 'analyzing', blockId }, async () => {
+    const result = await analyzeInlineDiagrams(deps.ctx, deps.store, {
+      id: articleId, blockId, skillsDir: join(deps.store.root, 'skills'),
+    })
+    await deps.store.update(state => {
+      const article = state.articles.find(item => item.id === articleId)
+      if (!article) return
+      const text = result.stale ? '分析期间正文有改动，本次结果已丢弃，请重新分析。'
+        : result.empty ? '暂时没有值得配图的位置。'
+          : result.count ? `已更新 ${result.count} 条插图建议。` : '没有新增建议，已生成的图片和忽略项均已保留。'
+      article.inlineMessage = { error: false, text, at: new Date().toISOString() }
+    })
+  })
+}
+
+function startInlineGeneration(deps, articleId, diagramId, style, settings) {
+  const provider = settings.coverProvider
+  const model = provider === 'bailian' ? settings.bailianModel : settings.arkModel
+  const apiKey = provider === 'bailian' ? settings.bailianKey : settings.arkKey
+  startInlineJob(deps, articleId, { kind: 'generate', stage: 'generating', diagramId, provider, style }, async () => {
+    const diagram = await deps.store.update(state => {
+      const article = activeInlineArticle(state, articleId)
+      const record = inlineRecord(article, diagramId)
+      record.status = 'generating'
+      record.error = null
+      record.style = style
+      record.provider = provider
+      record.model = model
+      article.inlineMessage = null
+      return { kind: record.kind, title: record.title, brief: record.brief }
+    })
+    const image = await generateInlineImage(diagram, { style, provider, model, apiKey, skillsDir: join(deps.store.root, 'skills') }, deps.fetchImpl)
+    const assetId = await saveInlineImage(deps.store.root, image)
+    let previous
+    try {
+      previous = await deps.store.update(state => {
+        const article = activeInlineArticle(state, articleId)
+        const record = inlineRecord(article, diagramId)
+        const previous = record.assetId ? { assetId: record.assetId, format: record.format } : null
+        Object.assign(record, { assetId, format: 'png', provider, model, style, status: 'generated', error: null, generatedAt: new Date().toISOString() })
+        delete record.publicUrl
+        delete record.insertedBlockId
+        article.inlineMessage = { error: false, text: '插图已生成，尚未上传图床，正文没有变化。', at: new Date().toISOString() }
+        return previous
+      })
+    } catch (err) {
+      await removeInlineImages(deps.store.root, [{ assetId, format: 'png' }]).catch(() => {})
+      throw err
+    }
+    if (previous && previous.assetId !== assetId) await removeInlineImages(deps.store.root, [previous]).catch(() => {})
+  })
+}
+
+function startInlineInsertion(deps, articleId, diagramId, expectedAnchorHash, acceptStale, cloudinary) {
+  startInlineJob(deps, articleId, { kind: 'insert', stage: 'uploading', diagramId }, async job => {
+    const prepared = await deps.store.read().then(state => {
+      const article = activeInlineArticle(state, articleId)
+      const diagram = inlineRecord(article, diagramId)
+      if (article.blocks.some(block => block.id === diagram.insertedBlockId && Boolean(diagram.publicUrl) && block.text.includes(diagram.publicUrl))) {
+        return { article, diagram, existing: true }
+      }
+      const anchor = mustBlock(article, diagram.anchorId)
+      const currentHash = sourceHash(anchor.text)
+      if (currentHash !== expectedAnchorHash) throw Object.assign(new Error('目标段落已变化，请重新确认插入位置。'), { status: 409 })
+      if (currentHash !== diagram.sourceHash && !acceptStale) throw Object.assign(new Error('段落已改动，请确认是否继续使用这张旧图。'), { status: 409 })
+      return { article, diagram, existing: false }
+    })
+    if (!prepared.diagram.publicUrl && !prepared.existing) {
+      const image = await readInlineImage(deps.store.root, prepared.diagram.assetId, prepared.diagram.format)
+      const publicUrl = await uploadInlineImage(image, cloudinary, { articleId, assetId: prepared.diagram.assetId }, deps.fetchImpl)
+      await deps.store.update(state => {
+        const diagram = inlineRecord(activeInlineArticle(state, articleId), diagramId)
+        if (diagram.assetId === prepared.diagram.assetId) diagram.publicUrl = publicUrl
+      })
+      job.stage = 'inserting'
+    }
+    await deps.store.update(state => {
+      const article = activeInlineArticle(state, articleId)
+      const result = insertDiagramBlock(article, diagramId, { expectedAnchorHash, acceptStale })
+      article.inlineMessage = {
+        error: false,
+        text: result.idempotent ? '这张插图已经在正文中，没有重复插入。' : '插图已插入正文，可以撤销后重新插入。',
+        at: new Date().toISOString(),
+      }
+    })
+  })
+}
+
 function imageJobMap(store) {
   if (!imageJobs.has(store)) imageJobs.set(store, new Map())
   return imageJobs.get(store)
@@ -168,7 +338,7 @@ function startImageImport(deps, article, urls) {
   }).finally(() => jobs.delete(article.id))
 }
 
-function view(article, pipeline, store) {
+function view(article, pipeline, store, inlineStyles = [], inlineStyleWarnings = []) {
   if (!article) return null
   const currentText = new Map(article.blocks.map(block => [block.id, block.text]))
   const previousText = new Map()
@@ -198,6 +368,11 @@ function view(article, pipeline, store) {
       ? { ...run, status: 'interrupted' } : run),
     cover: article.cover ?? null, coverJob: coverJobMap(store).get(article.id) ?? null, coverError: article.coverError ?? null,
     imageImport: imageJobMap(store).get(article.id) ?? article.imageImport ?? null,
+    inlineDiagrams: inlineDiagramView(article, store),
+    inlineDiagramJob: diagramJobMap(store).get(article.id) ?? null,
+    inlineDiagramMessage: article.inlineMessage ?? null,
+    inlineDiagramStyles: inlineStyles,
+    inlineDiagramStyleWarnings: inlineStyleWarnings,
   }
 }
 
@@ -205,12 +380,13 @@ async function snapshotState(ctx, store, pipeline) {
   const state = await store.read()
   const current = state.articles.find(a => a.id === state.currentId && !a.archivedAt) ?? null
   const info = modelInfo(ctx)
-  const settings = await readSettings(store.root)
+  const [settings, inlineCatalog] = await Promise.all([readSettings(store.root), readInlineStyleCatalog(join(store.root, 'skills'))])
   return {
     brand: settings.brand,
     zhuqueReady: Boolean(settings.zhuqueKey),
+    cloudinaryReady: Boolean(settings.cloudinary?.cloudName && settings.cloudinary?.apiKey && settings.cloudinary?.apiSecret),
     articles: state.articles.map(listMeta).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
-    current: view(current, pipeline, store),
+    current: view(current, pipeline, store, inlineCatalog.styles, inlineCatalog.warnings),
     model: info ? info.model : null, modelPinned: Boolean(modelOverride()), modelOk: modelStatus.ok, modelError: modelStatus.error,
   }
 }
@@ -253,6 +429,25 @@ export async function route(deps, req, res) {
     }
     if (path === 'insights/data') return json(res, 200, await insightsView(deps, url.searchParams.get('range')))
     const article = mustFind(await store.read(), url.searchParams.get('id'))
+    if (path === 'inline-diagrams/image') {
+      if (article.archivedAt) return json(res, 409, { error: '归档稿件不能读取插图。' })
+      try {
+        const asset = url.searchParams.get('asset')
+        const diagramId = url.searchParams.get('diagram') ?? article.inlineDiagrams?.find(item => item.assetId === asset)?.id
+        const image = await readInlineAsset(store.root, article, diagramId, asset)
+        const diagram = article.inlineDiagrams?.find(item => item.id === diagramId)
+        res.setHeader('content-type', 'image/png')
+        res.setHeader('cache-control', 'private, max-age=31536000, immutable')
+        if (url.searchParams.has('download')) {
+          const title = String(diagram?.title ?? '正文插图').replace(/[\r\n]+/g, ' ').trim().slice(0, 60) || '正文插图'
+          const filename = encodeURIComponent(`${title}.png`).replace(/'/g, '%27')
+          res.setHeader('content-disposition', `attachment; filename="inline-diagram.png"; filename*=UTF-8''${filename}`)
+        }
+        return res.end(image)
+      } catch (err) {
+        return json(res, err.status || 404, { error: err.message || '插图文件不存在' })
+      }
+    }
     if (path === 'cover/image') {
       const id = url.searchParams.get('asset')
       const run = coverRuns(article).find(run => run.images.some(image => image.id === id))
@@ -321,6 +516,94 @@ export async function route(deps, req, res) {
 
   const body = await readJson(req)
   switch (path) {
+    case 'inline-diagrams/analyze': {
+      const article = activeInlineArticle(await store.read(), body.id)
+      if (body.blockId) mustBlock(article, body.blockId)
+      startInlineAnalysis(deps, article.id, body.blockId ?? null)
+      return ok()
+    }
+    case 'inline-diagrams/ignore':
+    case 'inline-diagrams/restore': {
+      await store.update(state => {
+        const article = activeInlineArticle(state, body.id)
+        if (diagramJobMap(store).has(article.id)) throw Object.assign(new Error('请等当前插图任务结束后再操作。'), { status: 409 })
+        const diagram = inlineRecord(article, body.diagramId)
+        if (path.endsWith('/ignore')) {
+          if (article.blocks.some(block => block.id === diagram.insertedBlockId)) throw Object.assign(new Error('已插入的插图不能忽略，可以直接在正文中删除。'), { status: 409 })
+          diagram.status = 'ignored'
+        } else {
+          if (inlineAnchorOccupied(article, diagram, diagram.anchorId)) throw Object.assign(new Error('这个段落已有插图候选，已保留原忽略状态。'), { status: 409 })
+          diagram.status = diagram.insertedBlockId && article.blocks.some(block => block.id === diagram.insertedBlockId)
+            ? 'inserted' : diagram.assetId ? 'generated' : 'suggested'
+          diagram.error = null
+        }
+        article.inlineMessage = null
+      })
+      return ok()
+    }
+    case 'inline-diagrams/delete': {
+      const removed = await store.update(state => {
+        const article = activeInlineArticle(state, body.id)
+        if (diagramJobMap(store).has(article.id)) throw Object.assign(new Error('请等当前插图任务结束后再操作。'), { status: 409 })
+        const diagram = inlineRecord(article, body.diagramId)
+        if (article.blocks.some(block => block.id === diagram.insertedBlockId)) throw Object.assign(new Error('已插入正文的插图不能直接删除，请先在正文中删除图片。'), { status: 409 })
+        article.inlineDiagrams = article.inlineDiagrams.filter(item => item.id !== diagram.id)
+        article.inlineMessage = null
+        return article.inlineDiagrams.some(item => item.assetId === diagram.assetId) ? null : diagram
+      })
+      await removeInlineImages(store.root, [removed]).catch(() => {})
+      return ok()
+    }
+    case 'inline-diagrams/generate': {
+      await loadInlineStyle(body.style, join(store.root, 'skills'))
+      const article = activeInlineArticle(await store.read(), body.id)
+      const diagram = inlineRecord(article, body.diagramId)
+      if (!DIAGRAM_KINDS.includes(diagram.kind)) return json(res, 400, { error: '插图类型无效。' })
+      if (article.blocks.some(block => block.id === diagram.insertedBlockId)) return json(res, 409, { error: '这张插图已插入正文；如需重画，请先删除正文图片。' })
+      const anchor = mustBlock(article, diagram.anchorId)
+      if (diagram.pendingAnalysis) return json(res, 409, { error: '换位置后需要按新段落重新分析，请先点击「刷新建议」。' })
+      if (sourceHash(anchor.text) !== diagram.sourceHash) return json(res, 409, { error: '段落已改动；如需按新内容重画，请删除这条记录后用「指定段落」重新分析；插入旧图则需明确确认。' })
+      const settings = await readSettings(store.root)
+      const apiKey = settings.coverProvider === 'bailian' ? settings.bailianKey : settings.arkKey
+      if (!apiKey) return json(res, 400, { error: settings.coverProvider === 'bailian' ? '请先在设置中填写阿里云百炼 API Key。' : '请先在设置中填写火山方舟 API Key。' })
+      startInlineGeneration(deps, article.id, diagram.id, body.style, settings)
+      return ok()
+    }
+    case 'inline-diagrams/reanchor': {
+      await store.update(state => {
+        const article = activeInlineArticle(state, body.id)
+        if (diagramJobMap(store).has(article.id)) throw Object.assign(new Error('请等当前插图任务结束后再操作。'), { status: 409 })
+        const diagram = inlineRecord(article, body.diagramId)
+        if (article.blocks.some(block => block.id === diagram.insertedBlockId)) throw Object.assign(new Error('已插入正文的插图不能换位置，请直接在正文中处理图片。'), { status: 409 })
+        const target = mustBlock(article, body.blockId)
+        if (inlineAnchorOccupied(article, diagram, target.id)) throw Object.assign(new Error('这个段落已有插图候选，一个段落只保留一条。'), { status: 409 })
+        diagram.anchorId = target.id
+        if (!diagram.assetId) {
+          diagram.pendingAnalysis = true
+          if (['failed', 'interrupted'].includes(diagram.status)) diagram.status = 'suggested'
+          diagram.error = null
+        }
+        article.inlineMessage = {
+          error: false,
+          text: diagram.assetId ? '已更换插入位置；旧图仍按原段落生成，不会自动重画。' : '已更新插图位置；请点击「刷新建议」按新段落重新分析后再生图。',
+          at: new Date().toISOString(),
+        }
+      })
+      return ok()
+    }
+    case 'inline-diagrams/insert': {
+      if (!/^[a-f0-9]{64}$/.test(body.expectedAnchorHash ?? '')) return json(res, 400, { error: '缺少目标段落版本，请重新打开插入确认。' })
+      const article = activeInlineArticle(await store.read(), body.id)
+      const diagram = inlineRecord(article, body.diagramId)
+      if (!['generated', 'inserted'].includes(diagram.status)) return json(res, 409, { error: '这条建议当前不能插入，请先恢复或重新生成。' })
+      if (!diagram.assetId || diagram.format !== 'png') return json(res, 409, { error: '请先生成插图。' })
+      const settings = await readSettings(store.root)
+      if (!diagram.publicUrl && (!settings.cloudinary?.cloudName || !settings.cloudinary?.apiKey || !settings.cloudinary?.apiSecret)) {
+        return json(res, 400, { error: '请先在设置中配置 Cloudinary；已生成的插图会保留，配置后可直接插入。' })
+      }
+      startInlineInsertion(deps, article.id, diagram.id, body.expectedAnchorHash, body.acceptStale === true, settings.cloudinary)
+      return ok()
+    }
     case 'insights/experiment':
       await deps.insightsStore.update(async state => {
         const items = state.experiments ?? []
@@ -437,8 +720,8 @@ export async function route(deps, req, res) {
           return
         }
         notBusy(pipeline, article.id)
-        if (coverJobMap(store).has(article.id) || imageJobMap(store).has(article.id)) {
-          throw Object.assign(new Error('请等封面生成或图片转存完成后再归档。'), { status: 409 })
+        if (coverJobMap(store).has(article.id) || imageJobMap(store).has(article.id) || diagramJobMap(store).has(article.id)) {
+          throw Object.assign(new Error('请等封面生成、图片转存或插图任务完成后再归档。'), { status: 409 })
         }
         article.archivedAt ??= new Date().toISOString()
         if (state.currentId === article.id) state.currentId = null
@@ -454,12 +737,14 @@ export async function route(deps, req, res) {
       return ok()
     case 'articles/delete': {
       notBusy(pipeline, body.id)
-      if (coverJobMap(store).has(body.id)) return json(res, 409, { error: '封面生成完成后再删除这篇文章。' })
-      await store.update(state => {
+      if (coverJobMap(store).has(body.id) || diagramJobMap(store).has(body.id)) return json(res, 409, { error: '封面生成或插图任务完成后再删除这篇文章。' })
+      const discarded = await store.update(state => {
         const article = mustFind(state, body.id)
         state.articles = state.articles.filter(a => a.id !== article.id)
         if (state.currentId === article.id) state.currentId = state.articles.findLast(a => !a.archivedAt)?.id ?? null
+        return article.inlineDiagrams ?? []
       })
+      await removeInlineImages(store.root, discarded).catch(() => {})
       return ok()
     }
     case 'chat': {
@@ -686,9 +971,19 @@ export function createHandler(ctx, { store = new Store(), fetchImpl } = {}) {
   const pipeline = new Pipeline({ ctx, store, skillsDir: join(store.root, 'skills'), fetchImpl })
   const insightsStore = new Store(store.root, { file: 'insights.json', empty: INSIGHTS_EMPTY })
   const deps = { ctx, store, pipeline, insightsStore, fetchImpl }
+  const inlineCleanup = (async () => {
+    try {
+      JSON.parse(await readFile(store.file, 'utf8'))
+    } catch (err) {
+      if (err.code !== 'ENOENT') return
+    }
+    const state = await store.read()
+    await removeOrphanInlineImages(store.root, state.articles)
+  })().catch(() => {})
   // 启动时恢复用户在插件里选过的模型
   readSettings(store.root).then(saved => setModelOverride(saved.model)).catch(() => {})
   return async (req, res) => {
+    await inlineCleanup
     try {
       const rejection = requestRejection(ctx, req)
       if (rejection) return json(res, rejection, { error: '未授权' })

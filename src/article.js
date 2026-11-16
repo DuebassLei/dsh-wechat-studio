@@ -51,11 +51,17 @@ export function splitMarkdown(markdown, { bodyOnly = false } = {}) {
   return { front, title, blocks }
 }
 
+export function parseMarkdownImage(text) {
+  const match = /^!\[((?:\\.|[^\]\\])*)\]\(<?([^\s>)]+)>?(?:\s+"([^"]*)")?\)\s*$/.exec(String(text ?? ''))
+  if (!match) return null
+  return { caption: match[1].replace(/\\([\\\[\]])/g, '$1'), src: match[2], title: match[3] ?? '' }
+}
+
 export function blockKind(text) {
   if (/^\s*(```|~~~)/.test(text)) return 'code'
   if (/^#{2,6}\s/.test(text)) return 'heading'
   if (/^>\s?/.test(text)) return 'quote'
-  if (/^!\[[^\]]*\]\([^)]*\)\s*$/.test(text) || /^\[[^\]]+\.(mp4|mov)\]\s*$/i.test(text)) return 'media'
+  if (parseMarkdownImage(text) || /^\[[^\]]+\.(mp4|mov)\]\s*$/i.test(text)) return 'media'
   if (/^\|.*\|\s*$/m.test(text) && /^\|?\s*:?-{2,}/m.test(text)) return 'table'
   if (/^\s*([-*+]|\d+[.)])\s/.test(text)) return 'list'
   if (/^(-{3,}|\*{3,})\s*$/.test(text)) return 'rule'
@@ -65,7 +71,7 @@ export function blockKind(text) {
 /** 去掉 Markdown 记号后的纯文字，用来和朱雀报告对段落。 */
 export function plainOf(text) {
   return String(text)
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+    .replace(/!\[(?:\\.|[^\]\\])*\]\([^)]*\)/g, '')
     .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
     .replace(/^\s*>\s?(\[![A-Z]+\]\s*)?/gm, '')
     .replace(/^\s*([-*+]|\d+[.)])\s+/gm, '')
@@ -88,7 +94,7 @@ export function createArticle({ topic = '', material = '', markdown = '' } = {})
     topic: String(topic).trim().slice(0, 400), material: String(material).slice(0, 60000),
     front: parsed.front, title: parsed.title, titles: [], summary: '', hook: null,
     blocks: parsed.blocks.map(text => ({ id: newId(), text, check: null })),
-    chat: [], history: [], zhuque: { round: 0, lastAt: null },
+    chat: [], history: [], zhuque: { round: 0, lastAt: null }, inlineDiagrams: [],
   }
 }
 
@@ -97,6 +103,8 @@ export function setBody(article, markdown) {
   if (parsed.front) article.front = parsed.front
   if (parsed.title) article.title = parsed.title
   article.blocks = parsed.blocks.map(text => ({ id: newId(), text, check: null }))
+  article.inlineDiagrams = []
+  article.inlineMessage = null
 }
 
 export function toMarkdown(article) {

@@ -45,6 +45,8 @@ MONO = "Menlo,Consolas,'SF Mono',monospace"
 SERIF = "Georgia,'Songti SC','STSong','Source Han Serif SC','Noto Serif SC',serif"
 CN_NUM = "一二三四五六七八九十"
 esc = lambda s: H.escape(s, quote=False)
+IMAGE_ALT = r'((?:\\.|[^\]\\])*)'
+image_alt = lambda s: re.sub(r'\\([\\\[\]])', r'\1', s)
 WARN = []                             # 排版过程中发现的问题，最后在自查报告里打印
 def warn(x):
     if x not in WARN: WARN.append(x)
@@ -66,7 +68,7 @@ def inline(s, T, notes):
         keep.append(h); return f"\x00{len(keep)-1}\x00"
     # 行内代码、图片、链接先收起来，里面的 * _ = 不会被当成标记
     s = re.sub(r"`([^`]+)`", lambda m: stash(f'<code style="font-family:{MONO};font-size:0.9em;background:{T["soft"]};color:{T["main"]};padding:2px 5px;border-radius:4px;">{esc(m.group(1))}</code>'), s)
-    s = re.sub(r'!\[([^\]]*)\]\(<?([^)\s>]+)>?(?:\s+"[^"]*")?\)', lambda m: stash(f'<img src="{m.group(2)}" style="max-width:100%;vertical-align:middle;"/>'), s)
+    s = re.sub(rf'!\[{IMAGE_ALT}\]\(<?([^)\s>]+)>?(?:\s+"[^"]*")?\)', lambda m: stash(f'<img src="{m.group(2)}" style="max-width:100%;vertical-align:middle;"/>'), s)
     def link(m):
         text, url = esc(m.group(1)), m.group(2)
         if "mp.weixin.qq.com" in url:
@@ -1083,13 +1085,13 @@ def render(md, T, meta, stat=None):
             continue
         mv = VIDEO_RE.match(s)
         if mv: flush(); stat["视频占位"] = stat.get("视频占位", 0) + 1; emit(video_slot(mv.group(1), T), True); i += 1; continue
-        mi = re.match(r'^!\[([^\]]*)\]\(<?([^)\s>]+)>?(?:\s+"([^"]*)")?\)$', s)
+        mi = re.match(rf'^!\[{IMAGE_ALT}\]\(<?([^)\s>]+)>?(?:\s+"([^"]*)")?\)$', s)
         if mi:
             flush()
             if (mi.group(3) or "").lower() == "long":
                 stat["滑动卡"] = stat.get("滑动卡", 0) + 1
-                emit(dashed_box(mi.group(1) if mi.group(1) and mi.group(1).lower() != "image" else "滑动查看长图", "image", f'<img src="{mi.group(2)}" style="display:block;width:100%;"/>', T, 420), True)
-            else: emit(image(mi.group(2), mi.group(1), T), True)
+                emit(dashed_box(image_alt(mi.group(1)) if mi.group(1) and mi.group(1).lower() != "image" else "滑动查看长图", "image", f'<img src="{mi.group(2)}" style="display:block;width:100%;"/>', T, 420), True)
+            else: emit(image(mi.group(2), image_alt(mi.group(1)), T), True)
             i += 1; continue
         ml = LI_RE.match(ln)
         if ml:

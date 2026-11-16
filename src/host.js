@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { readFile } from 'node:fs/promises'
 import { defaultSelection, listModels, modelInfo, modelOverride, modelStatus, setModelOverride, skillSources } from './ai.js'
 import { BANNER_CHOICES, BANNER_STYLES, DEFAULT_BANNER } from './banner.js'
-import { blockKind, createArticle, fixPlan, HOOK_IDS, isCheckable, listMeta, newId, revisionChanges, snapshot, splitMarkdown, toMarkdown, touch, undo } from './article.js'
+import { blockKind, clearSchedule, createArticle, fixPlan, HOOK_IDS, isCheckable, listMeta, markPublished, newId, revisionChanges, setSchedule, snapshot, splitMarkdown, toMarkdown, touch, undo, unpublish } from './article.js'
 import { transferFeishuImages, uploadInlineImage } from './cloudinary.js'
 import { feishuImageUrls, replaceFeishuImages } from './markdown-images.js'
 import { generateInlineImage, readInlineAsset, readInlineImage, removeInlineImages, removeOrphanInlineImages, saveInlineImage } from './inline-assets.js'
@@ -386,7 +386,7 @@ async function snapshotState(ctx, store, pipeline) {
     brand: settings.brand,
     zhuqueReady: Boolean(settings.zhuqueKey),
     cloudinaryReady: Boolean(settings.cloudinary?.cloudName && settings.cloudinary?.apiKey && settings.cloudinary?.apiSecret),
-    articles: state.articles.map(listMeta).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
+    articles: state.articles.map(article => listMeta(article, { bannerReady: bannerView(article).ready })).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
     current: view(current, pipeline, store, inlineCatalog.styles, inlineCatalog.warnings),
     model: info ? info.model : null, modelPinned: Boolean(modelOverride()), modelOk: modelStatus.ok, modelError: modelStatus.error,
   }
@@ -406,6 +406,14 @@ function mustBlock(article, id) {
 
 function notBusy(pipeline, id) {
   if (pipeline.job(id)) throw Object.assign(new Error('这篇文章还有任务在跑，等它结束再试。'), { status: 409 })
+}
+
+function scheduleTime(value) {
+  const date = new Date(value)
+  if (typeof value !== 'string' || Number.isNaN(date.getTime()) || date.getFullYear() < 2000 || date.getFullYear() > 2100) {
+    throw Object.assign(new Error('请选择有效的发布时间。'), { status: 400 })
+  }
+  return date.toISOString()
 }
 
 /**
@@ -711,6 +719,37 @@ export async function route(deps, req, res) {
         return json(res, 400, { error: '请选择有效的稿件页面。' })
       }
       await store.update(state => { mustFind(state, body.id).lastView = body.view })
+      return ok()
+    }
+    case 'schedule/set': {
+      const at = scheduleTime(body.at)
+      await store.update(state => {
+        const article = mustFind(state, body.id)
+        if (article.archivedAt) throw Object.assign(new Error('归档稿件不能排期，请先恢复。'), { status: 409 })
+        if (article.publishedAt) throw Object.assign(new Error('这篇已标记发布，不能改期。'), { status: 409 })
+        setSchedule(article, at)
+      })
+      return ok()
+    }
+    case 'schedule/clear': {
+      await store.update(state => {
+        const article = mustFind(state, body.id)
+        if (article.publishedAt) throw Object.assign(new Error('这篇已标记发布，不能取消排期。'), { status: 409 })
+        clearSchedule(article)
+      })
+      return ok()
+    }
+    case 'articles/publish': {
+      const at = body.at == null ? new Date().toISOString() : scheduleTime(body.at)
+      await store.update(state => {
+        const article = mustFind(state, body.id)
+        if (article.archivedAt) throw Object.assign(new Error('归档稿件不能标记发布，请先恢复。'), { status: 409 })
+        markPublished(article, at)
+      })
+      return ok()
+    }
+    case 'articles/unpublish': {
+      await store.update(state => { unpublish(mustFind(state, body.id)) })
       return ok()
     }
     case 'articles/archive':

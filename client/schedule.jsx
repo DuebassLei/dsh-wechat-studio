@@ -225,7 +225,7 @@ function SchedulePicker({ data, picker, onClose }) {
   )
 }
 
-function NextUp({ data, onReschedule }) {
+function NextUp({ data, onReschedule, weekOffset, onJumpWeek }) {
   const [now, setNow] = React.useState(() => Date.now())
   React.useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 30000); return () => clearInterval(timer) }, [])
   const candidates = data.articles.filter(a => !a.archivedAt && !a.publishedAt && a.scheduledFor)
@@ -236,20 +236,31 @@ function NextUp({ data, onReschedule }) {
   const target = overdue[0] ?? next
   if (!target) return null
   const at = new Date(target.scheduledFor).getTime()
+  const atDate = new Date(at)
   const diff = at - now
-  const isToday = dayKey(new Date(at)) === dayKey(new Date(now))
-  const countdown = diff <= 0 ? '已过发布时间'
+  const over = -diff
+  const isToday = dayKey(atDate) === dayKey(new Date(now))
+  const countdown = diff <= 0
+    ? (over < 3600000 ? `已过点 ${Math.max(1, Math.round(over / 60000))} 分钟`
+      : over < 86400000 ? `已过点 ${Math.floor(over / 3600000)} 小时 ${Math.floor(over % 3600000 / 60000)} 分`
+        : `已过点 ${Math.floor(over / 86400000)} 天 ${Math.floor(over % 86400000 / 3600000)} 小时`)
     : diff < 3600000 ? `还有 ${Math.max(1, Math.round(diff / 60000))} 分钟`
       : diff < 86400000 ? `还有 ${Math.floor(diff / 3600000)} 小时 ${Math.floor(diff % 3600000 / 60000)} 分`
         : `还有 ${Math.floor(diff / 86400000)} 天 ${Math.floor(diff % 86400000 / 3600000)} 小时`
+  // 不带日期会把两周前的排期误读成本周；跨周时给一个跳回当周的入口
+  const dateLabel = `${atDate.getMonth() + 1}/${atDate.getDate()}`
+  const targetOffset = Math.round((mondayOf(atDate) - mondayOf(new Date(now))) / 604800000)
   const publish = async () => { if (await act('articles/publish', { id: target.id })) toast('已标记发布。导入复盘数据后会自动对上这篇。') }
   return (
-    <section className={`ws-sched-next ${diff <= 0 ? 'is-overdue' : ''}`} aria-label="下一篇要发的">
+    <section className={`ws-sched-next ${diff <= 0 ? 'is-overdue' : ''}`} aria-label={diff <= 0 ? '过点未发的稿件' : '下一篇要发的'}>
       <CoverThumb draft={target} />
       <div className="ws-sched-next-copy">
-        <span className="ws-muted ws-small">下一篇 · {weekdayName(new Date(at))} {timeLabel(target.scheduledFor)}</span>
+        <span className="ws-muted ws-small">
+          {diff <= 0 ? '过点未发' : '下一篇'} · {dateLabel} {weekdayName(atDate)} {timeLabel(target.scheduledFor)}
+          {targetOffset !== weekOffset ? <button type="button" className="ws-link ws-sched-next-jump" onClick={() => onJumpWeek(targetOffset)}>定位到当周</button> : null}
+        </span>
         <button type="button" className="ws-sched-next-title" onClick={() => openDraft(target)}>{target.title}</button>
-        <span className={diff <= 0 ? 'ws-warn' : 'ws-sched-count'}>{countdown}</span>
+        <span className={diff <= 0 ? 'ws-warn' : 'ws-sched-count'}>{countdown}{diff <= 0 ? ' · 标记已发或取消排期后不再显示' : ''}</span>
       </div>
       <div className="ws-sched-checklist">
         {isToday || diff <= 0 ? <>
@@ -324,7 +335,7 @@ export function ScheduleView({ data }) {
           <p className="ws-muted ws-small ws-sched-dock-hint">拖到右边某天即可排期；点「排期」可选时段。</p>
         </aside>
         <section className="ws-sched-main" aria-label="周日历">
-          <NextUp data={data} onReschedule={pickFor} />
+          <NextUp data={data} onReschedule={pickFor} weekOffset={weekOffset} onJumpWeek={setWeekOffset} />
           <div className="ws-sched-week">
             {days.map(date => {
               const key = dayKey(date)

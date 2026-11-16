@@ -1,17 +1,9 @@
 // 排期页：左边待排坞，右边周历，拖拽即排期。公众号发布是手动的，这里只管排哪天、够不够格发、发完标记。
 import React from 'react'
 import { act, setState, toast, useStudio } from './state.js'
-
-const ICONS = {
-  check: 'M3 8.5l3.2 3.2L13 5',
-  close: 'M4 4l8 8M12 4l-8 8',
-  plus: 'M8 3v10M3 8h10',
-  chevron: 'M4 6l4 4 4-4',
-  doc: 'M4 2h5.5L12.5 5v9H4zM6.5 8h4M6.5 10.5h4',
-}
-function Icon({ name, size = 16 }) {
-  return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d={ICONS[name]} /></svg>
-}
+import { addDays, atOn, dayKey, isOverdue, mondayOf, parseDay } from '../src/schedule-time.js'
+import { ScheduleAgenda } from './schedule-agenda.jsx'
+import { CoverThumb, dateLabel, Icon, inputTime, openDraft, pad, pubSlot, ReadinessRing, timeLabel, weekdayName } from './schedule-shared.jsx'
 
 const SLOTS = [
   { id: 'morning', label: '早 8 点', hour: 8 },
@@ -19,52 +11,17 @@ const SLOTS = [
   { id: 'evening', label: '晚 8 点', hour: 20 },
   { id: 'custom', label: '自定义', hour: null },
 ]
-const WEEKDAYS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
-
-const pad = n => String(n).padStart(2, '0')
-const dayKey = date => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
-const parseDay = key => { const [y, m, d] = key.split('-').map(Number); return new Date(y, m - 1, d) }
-const addDays = (date, days) => { const d = new Date(date); d.setDate(d.getDate() + days); return d }
-const mondayOf = date => addDays(date, -((date.getDay() + 6) % 7))
-const weekdayName = date => WEEKDAYS[(date.getDay() + 6) % 7]
-const atOn = (key, hour, minute = 0) => { const d = parseDay(key); d.setHours(hour, minute, 0, 0); return d.toISOString() }
-const timeLabel = iso => { const d = new Date(iso); return `${pad(d.getHours())}:${pad(d.getMinutes())}` }
+const zoneLabel = date => {
+  const offset = -date.getTimezoneOffset()
+  const sign = offset < 0 ? '-' : '+'
+  const minutes = Math.abs(offset)
+  return `${Intl.DateTimeFormat().resolvedOptions().timeZone}（UTC${sign}${pad(Math.floor(minutes / 60))}:${pad(minutes % 60)}）`
+}
 const slotOf = iso => { const d = new Date(iso); return SLOTS.find(s => s.hour === d.getHours() && d.getMinutes() === 0) ?? SLOTS[3] }
-// 已发卡片落回排期日：补记历史稿件时不会全挤到标记当天；没排期的才落标记日
-const pubSlot = draft => draft.scheduledFor ?? draft.publishedAt
-const coverUrl = draft => `wechat-studio/cover/image?${new URLSearchParams({ id: draft.id, asset: draft.coverId })}`
-
-async function openDraft(draft, view) {
-  if (!await act('articles/select', { id: draft.id })) return
-  setState({ module: 'paper', paperHome: false, view: view ?? (draft.lastView === 'layout' ? 'layout' : 'paper'), editing: null })
-}
-
-function ReadinessRing({ readiness, size = 22 }) {
-  const r = 8, c = 10, gap = 0.14
-  const arc = index => {
-    const start = (index / 5) * Math.PI * 2 - Math.PI / 2 + gap
-    const end = ((index + 1) / 5) * Math.PI * 2 - Math.PI / 2 - gap
-    return `M${(c + r * Math.cos(start)).toFixed(2)} ${(c + r * Math.sin(start)).toFixed(2)} A${r} ${r} 0 0 1 ${(c + r * Math.cos(end)).toFixed(2)} ${(c + r * Math.sin(end)).toFixed(2)}`
-  }
-  return (
-    <svg className="ws-sched-ring" width={size} height={size} viewBox="0 0 20 20" role="img"
-      aria-label={`就绪 ${readiness.done}/${readiness.total}：${readiness.items.map(i => `${i.label}${i.done ? '已完成' : '未完成'}`).join('，')}`}>
-      {readiness.items.map((item, index) => <path key={item.id} d={arc(index)} fill="none" strokeWidth="2.6" strokeLinecap="round" className={item.done ? 'is-done' : ''} />)}
-    </svg>
-  )
-}
-
-function CoverThumb({ draft }) {
-  const [failed, setFailed] = React.useState(false)
-  return <div className="ws-sched-thumb">{draft.coverId && !failed
-    ? <img src={coverUrl(draft)} alt="" loading="lazy" onError={() => setFailed(true)} />
-    : <Icon name="doc" size={18} />}</div>
-}
-
-function DockCard({ draft, onPick, onDragStart }) {
+function DockCard({ draft, onPick, onDragStart, onDragEnd }) {
   const missing = draft.readiness.total - draft.readiness.done
   return (
-    <article className="ws-sched-card" draggable onDragStart={e => onDragStart(e, draft)}>
+    <article className="ws-sched-card" draggable onDragStart={e => onDragStart(e, draft)} onDragEnd={onDragEnd}>
       <div className="ws-sched-card-top">
         <CoverThumb draft={draft} />
         <div className="ws-sched-card-copy">
@@ -81,220 +38,331 @@ function DockCard({ draft, onPick, onDragStart }) {
   )
 }
 
-function ScheduledCard({ draft, now, onPick, onUnschedule, onPublish, onDragStart }) {
-  const missing = draft.readiness.items.filter(i => !i.done)
-  const overdue = new Date(draft.scheduledFor).getTime() < now
+function ReadinessDetails({ readiness }) {
   return (
-    <article className={`ws-sched-entry ${overdue ? 'is-overdue' : ''} ${missing.length ? 'is-notready' : ''}`} draggable onDragStart={e => onDragStart(e, draft)}>
+    <details className="ws-sched-readiness">
+      <summary aria-label={`查看就绪项目，已完成 ${readiness.done}/${readiness.total}`}><ReadinessRing readiness={readiness} size={18} /></summary>
+      <div className="ws-sched-readiness-list">
+        <strong>就绪 {readiness.done}/{readiness.total}</strong>
+        {readiness.items.map(item => <span key={item.id} className={item.done ? '' : 'is-missing'}>{item.label} · {item.done ? '已完成' : '未完成'}</span>)}
+      </div>
+    </details>
+  )
+}
+
+function CardMenu({ children }) {
+  return <details className="ws-sched-card-menu"><summary>更多</summary><div>{children}</div></details>
+}
+
+function ScheduledCard({ draft, now, onPick, onUnschedule, onPublish, onDragStart, onDragEnd }) {
+  const missing = draft.readiness.items.filter(i => !i.done)
+  const overdue = isOverdue(draft.scheduledFor, now)
+  return (
+    <article id={`ws-sched-entry-${draft.id}`} tabIndex={-1} className={`ws-sched-entry ${overdue ? 'is-overdue' : ''} ${missing.length ? 'is-notready' : ''}`} draggable onDragStart={e => onDragStart(e, draft)} onDragEnd={onDragEnd}>
       <div className="ws-sched-entry-head">
         <span className="ws-sched-time">{timeLabel(draft.scheduledFor)}</span>
-        <ReadinessRing readiness={draft.readiness} size={18} />
+        <div className="ws-sched-entry-status">{overdue ? <span className="ws-sched-overdue">过点</span> : null}<ReadinessDetails readiness={draft.readiness} /></div>
       </div>
       <button type="button" className="ws-sched-entry-title" onClick={() => openDraft(draft)}>{draft.title}</button>
-      {missing.length ? <span className="ws-sched-missing">还差：{missing.map(i => i.label).join('、')}</span> : null}
-      {overdue ? <span className="ws-sched-overdue">已过点，未标记发布</span> : null}
       <div className="ws-sched-entry-actions">
         <button type="button" className="ws-link" onClick={() => onPublish(draft)}>标记已发</button>
-        <button type="button" className="ws-link" onClick={() => onPick(draft)}>改期</button>
-        <button type="button" className="ws-link" onClick={() => onUnschedule(draft)}>取消</button>
+        <CardMenu><button type="button" className="ws-link" onClick={() => onPick(draft)}>改期</button><button type="button" className="ws-link" onClick={() => onUnschedule(draft)}>取消排期</button></CardMenu>
       </div>
     </article>
   )
 }
 
-function PublishedCard({ draft }) {
+function PublishedCard({ draft, onCorrect, onUnpublish }) {
+  const planned = draft.scheduledFor
+  const actual = draft.publishedAt
+  const crossDay = planned && dayKey(new Date(planned)) !== dayKey(new Date(actual))
   return (
-    <article className="ws-sched-entry is-published">
+    <article id={`ws-sched-entry-${draft.id}`} tabIndex={-1} className="ws-sched-entry is-published">
       <div className="ws-sched-entry-head">
-        <span className="ws-sched-time">{timeLabel(pubSlot(draft))}</span>
-        <span className="ws-sched-published-tag"><Icon name="check" size={12} />已发</span>
+        <span className="ws-sched-time">{planned ? `${crossDay ? `${dateLabel(planned)} ` : ''}${timeLabel(planned)}` : timeLabel(actual)}</span>
+        <span className="ws-sched-published-tag" role="img" aria-label="已发" title="已发"><Icon name="check" size={11} /></span>
       </div>
       <button type="button" className="ws-sched-entry-title" onClick={() => openDraft(draft)}>{draft.title}</button>
+      {draft.publishMarkedAt ? <>
+        <span className="ws-sched-published-at">实际发表 {crossDay || !planned ? `${dateLabel(actual)} ` : ''}{timeLabel(actual)}</span>
+        <span className="ws-sched-marked-at">记录于 {dateLabel(draft.publishMarkedAt)} {timeLabel(draft.publishMarkedAt)}</span>
+      </> : <span className="ws-sched-marked-at">实际发表时间未确认 · 标记于 {dateLabel(actual)} {timeLabel(actual)}</span>}
       <div className="ws-sched-entry-actions">
-        <button type="button" className="ws-link" onClick={async () => { if (await act('articles/unpublish', { id: draft.id })) toast('已撤销发布标记') }}>撤销标记</button>
+        <button type="button" className="ws-link" onClick={() => onCorrect(draft)}>更正发表时间</button>
+        <CardMenu><button type="button" className="ws-link" onClick={() => onUnpublish(draft)}>撤销标记</button></CardMenu>
       </div>
     </article>
   )
 }
 
-// 原生 select 的系统弹层按最长选项撑宽，会溢出弹窗；自绘列表框把宽度锁在弹窗内
+function ScheduleModal({ label, onClose, onSubmit, returnFocusId, children }) {
+  const modal = React.useRef(null)
+  const closeRef = React.useRef(onClose)
+  const returnFocusRef = React.useRef(returnFocusId)
+  closeRef.current = onClose
+  returnFocusRef.current = returnFocusId
+  React.useEffect(() => {
+    const previous = document.activeElement
+    const dialog = modal.current
+    dialog.showModal()
+    dialog.querySelector('[data-autofocus]')?.focus()
+    return () => {
+      if (dialog.open) dialog.close()
+      if (dialog.open) dialog.close()
+      if (previous?.isConnected) previous.focus({ preventScroll: true })
+      else (document.getElementById(`ws-sched-entry-${returnFocusRef.current}`) ?? document.querySelector('.ws-sched-notice button'))?.focus({ preventScroll: true })
+    }
+  }, [])
+  return <dialog ref={modal} className="ws-dialog ws-sched-picker" aria-label={label}
+    onCancel={event => { event.preventDefault(); closeRef.current() }}
+    onClick={event => {
+      if (event.target !== event.currentTarget) return
+      const bounds = event.currentTarget.getBoundingClientRect()
+      if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) closeRef.current()
+    }}>
+    <form onSubmit={onSubmit}>{children}</form>
+  </dialog>
+}
+
 function DraftSelect({ dock, id, onChange }) {
+  const listId = React.useId()
   const [open, setOpen] = React.useState(false)
-  const [active, setActive] = React.useState(() => Math.max(0, dock.findIndex(a => a.id === id)))
+  const [query, setQuery] = React.useState('')
+  const [active, setActive] = React.useState(0)
   const rootRef = React.useRef(null)
   const listRef = React.useRef(null)
   const chosen = dock.find(a => a.id === id)
+  const normalized = query.trim().toLocaleLowerCase()
+  const results = dock.filter(a => !normalized || a.title.toLocaleLowerCase().includes(normalized))
+  const resultKey = results.map(a => a.id).join('\u0001')
+  React.useEffect(() => { setActive(0) }, [query, resultKey])
   React.useEffect(() => {
     if (!open) return
-    const onDown = e => { if (!rootRef.current?.contains(e.target)) setOpen(false) }
+    const onDown = event => { if (!rootRef.current?.contains(event.target)) setOpen(false) }
     document.addEventListener('pointerdown', onDown)
     return () => document.removeEventListener('pointerdown', onDown)
   }, [open])
   React.useEffect(() => {
     if (open) listRef.current?.querySelector('[data-active="true"]')?.scrollIntoView({ block: 'nearest' })
-  }, [open, active])
-  const pick = value => { onChange(value); setOpen(false) }
-  const onKeyDown = e => {
-    if (!open) {
-      if (['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(e.key)) { e.preventDefault(); setOpen(true) }
-      return
-    }
-    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setOpen(false) }
-    else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      e.preventDefault()
-      setActive(i => Math.min(dock.length - 1, Math.max(0, i + (e.key === 'ArrowDown' ? 1 : -1))))
-    } else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (dock[active]) pick(dock[active].id) }
-    else if (e.key === 'Tab') setOpen(false)
+  }, [open, active, resultKey])
+  const pick = draft => { onChange(draft.id); setQuery(''); setOpen(false) }
+  const onKeyDown = event => {
+    if (event.key === 'Escape' && open) {
+      event.preventDefault()
+      event.stopPropagation()
+      setOpen(false)
+    } else if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+      event.preventDefault()
+      if (!open) setOpen(true)
+      if (event.key === 'Home') setActive(0)
+      else if (event.key === 'End') setActive(Math.max(0, results.length - 1))
+      else setActive(index => Math.min(Math.max(0, results.length - 1), Math.max(0, index + (event.key === 'ArrowDown' ? 1 : -1))))
+    } else if (event.key === 'Enter') {
+      if (open && results[active]) { event.preventDefault(); pick(results[active]) }
+      else if (!open) { event.preventDefault(); setOpen(true) }
+    } else if (event.key === 'Tab') setOpen(false)
   }
   return (
     <div className="ws-sched-choose" ref={rootRef}>
-      <button type="button" className="ws-sched-choose-btn" role="combobox" aria-expanded={open} aria-controls="ws-sched-choose-list"
-        aria-activedescendant={open && dock[active] ? `ws-opt-${dock[active].id}` : undefined}
-        disabled={!dock.length} autoFocus onClick={() => setOpen(o => !o)} onKeyDown={onKeyDown}>
-        <span className="ws-sched-choose-text">{chosen?.title ?? '没有待排稿件'}</span>
-        <Icon name="chevron" size={14} />
-      </button>
+      <input className="ws-sched-choose-input" role="combobox" aria-label="搜索并选择待排稿件" aria-autocomplete="list"
+        aria-expanded={open} aria-controls={listId} aria-activedescendant={open && results[active] ? `${listId}-${results[active].id}` : undefined}
+        value={open ? query : chosen?.title ?? ''} placeholder={dock.length ? '输入标题搜索' : '没有待排稿件'} disabled={!dock.length} data-autofocus
+        onFocus={() => { setQuery(''); setOpen(true) }} onClick={() => { if (!open) { setQuery(''); setOpen(true) } }}
+        onChange={event => { onChange(''); setQuery(event.target.value); setOpen(true) }} onKeyDown={onKeyDown} />
+      <Icon name="chevron" size={14} />
       {open ? (
-        <ul className="ws-sched-choose-list" id="ws-sched-choose-list" role="listbox" aria-label="选稿件" ref={listRef}>
-          {dock.map((a, i) => (
-            <li key={a.id} id={`ws-opt-${a.id}`} role="option" aria-selected={a.id === id} data-active={i === active}
-              className={`ws-sched-choose-opt ${a.id === id ? 'is-on' : ''}`} title={a.title}
-              onPointerMove={() => setActive(i)} onClick={() => pick(a.id)}>
-              <span className="ws-sched-choose-mark">{a.id === id ? <Icon name="check" size={13} /> : null}</span>
-              <span className="ws-sched-choose-text">{a.title}</span>
+        <ul className="ws-sched-choose-list" id={listId} role="listbox" aria-label="稿件搜索结果" ref={listRef}>
+          {results.map((draft, index) => (
+            <li key={draft.id} id={`${listId}-${draft.id}`} role="option" aria-selected={draft.id === id} data-active={index === active}
+              className={`ws-sched-choose-opt ${draft.id === id ? 'is-on' : ''}`} title={draft.title}
+              onPointerDown={event => event.preventDefault()} onPointerMove={() => setActive(index)} onClick={() => pick(draft)}>
+              <span className="ws-sched-choose-mark">{draft.id === id ? <Icon name="check" size={13} /> : null}</span>
+              <span className="ws-sched-choose-text">{draft.title}</span>
             </li>
           ))}
+          {!results.length ? <li className="ws-sched-choose-empty">没有匹配的待排稿件</li> : null}
         </ul>
       ) : null}
     </div>
   )
 }
 
-function SchedulePicker({ data, picker, onClose }) {
+function SchedulePicker({ data, picker, onClose, onSave, onSaved }) {
   const dock = data.articles.filter(a => !a.archivedAt && !a.publishedAt && !a.scheduledFor)
   const [id, setId] = React.useState(picker.id ?? dock[0]?.id ?? '')
   const [day, setDay] = React.useState(picker.day)
+  const [selectionMessage, setSelectionMessage] = React.useState('')
   const chosen = data.articles.find(a => a.id === id)
+  const dockKey = dock.map(a => a.id).join('\u0001')
+  React.useEffect(() => {
+    if (picker.id && (!chosen || chosen.archivedAt || chosen.publishedAt)) {
+      setSelectionMessage('这篇稿件已归档或已发，不能继续改期。')
+    } else if (!picker.id && id && !dock.some(a => a.id === id)) {
+      setId('')
+      setSelectionMessage('所选稿件已归档或已排期，请重新选择。')
+    }
+  }, [id, picker.id, chosen, dockKey, dock])
   const existing = chosen?.scheduledFor ? new Date(chosen.scheduledFor) : null
   const [slot, setSlot] = React.useState(existing ? slotOf(chosen.scheduledFor).id : 'evening')
   const [time, setTime] = React.useState(existing ? timeLabel(chosen.scheduledFor) : '20:00')
   const pending = useStudio(s => s.pending)
-  // 焦点可能落在弹窗内不可聚焦区域（body），Escape 需在 document 层兜底
-  React.useEffect(() => {
-    const onKey = e => { if (e.key === 'Escape') onClose() }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [onClose])
-  const submit = async event => {
-    event.preventDefault()
-    if (!id || !day) return
+  let previewAt = null
+  try {
     const hour = slot === 'custom' ? Number(time.split(':')[0]) : SLOTS.find(s => s.id === slot).hour
     const minute = slot === 'custom' ? Number(time.split(':')[1]) : 0
-    if (!Number.isInteger(hour) || !Number.isInteger(minute)) return toast('请填写有效的时间', true)
-    const at = atOn(day, hour, minute)
-    if (await act('schedule/set', { id, at })) {
-      toast(`已排到 ${weekdayName(parseDay(day))} ${timeLabel(at)}`)
+    previewAt = atOn(day, hour, minute)
+  } catch {}
+  const collision = previewAt && data.articles.some(a => a.id !== id && !a.archivedAt && !a.publishedAt && a.scheduledFor === previewAt)
+  const submit = async event => {
+    event.preventDefault()
+    if (!id || !day || selectionMessage) return
+    const hour = slot === 'custom' ? Number(time.split(':')[0]) : SLOTS.find(s => s.id === slot).hour
+    const minute = slot === 'custom' ? Number(time.split(':')[1]) : 0
+    let at
+    try {
+      at = atOn(day, hour, minute)
+    } catch {
+      return toast('请填写有效的本地时间，并避开夏令时切换时不存在的时刻', true)
+    }
+    if (await onSave(id, at)) {
+      onSaved(id, at)
       onClose()
     }
   }
   return (
-    <div className="ws-sched-overlay" role="presentation" onPointerDown={e => { if (e.target === e.currentTarget) onClose() }}>
-      <form className="ws-sched-picker" role="dialog" aria-modal="true" aria-label="安排发布时间" onSubmit={submit}>
-        <div className="ws-sched-picker-head">
-          <h2>{chosen?.scheduledFor ? '改期' : '排一篇'}</h2>
-          <button type="button" className="ws-icon-btn" aria-label="关闭" onClick={onClose}><Icon name="close" /></button>
+    <ScheduleModal label="安排发布时间" onClose={onClose} onSubmit={submit} returnFocusId={id}>
+      <div className="ws-sched-picker-head">
+        <h2>{chosen?.scheduledFor ? '改期' : '排一篇'}</h2>
+        <button type="button" className="ws-icon-btn" aria-label="关闭" onClick={onClose}><Icon name="close" /></button>
+      </div>
+      {picker.id ? <p className="ws-sched-picker-title">{chosen?.title}</p> : (
+        <div className="ws-sched-field">选稿件
+          <DraftSelect dock={dock} id={id} onChange={value => { setId(value); if (value) setSelectionMessage('') }} />
         </div>
-        {picker.id ? <p className="ws-sched-picker-title">{chosen?.title}</p> : (
-          <div className="ws-sched-field">选稿件
-            <DraftSelect dock={dock} id={id} onChange={setId} />
-          </div>
-        )}
-        <label className="ws-sched-field">日期
-          <input type="date" value={day} min="2000-01-01" max="2100-12-31" required autoFocus={Boolean(picker.id)} onChange={e => setDay(e.target.value)} />
-        </label>
-        <div className="ws-sched-slots" role="radiogroup" aria-label="时段">
-          {SLOTS.map(s => <button key={s.id} type="button" role="radio" aria-checked={slot === s.id} className={slot === s.id ? 'is-on' : ''} onClick={() => setSlot(s.id)}>{s.label}</button>)}
-        </div>
-        {slot === 'custom' ? <label className="ws-sched-field">时间<input type="time" value={time} required onChange={e => setTime(e.target.value)} /></label> : null}
-        <div className="ws-sched-picker-actions">
-          <button type="button" className="ws-btn" onClick={onClose}>取消</button>
-          <button type="submit" className="ws-btn is-primary" disabled={!id || !day || Boolean(pending)}>排上日历</button>
-        </div>
-      </form>
-    </div>
+      )}
+      {selectionMessage ? <p className="ws-warn ws-small" role="alert">{selectionMessage}</p> : null}
+      <label className="ws-sched-field">日期
+        <input type="date" value={day} min="2000-01-01" max="2100-12-31" required data-autofocus={picker.id ? true : undefined} onChange={e => setDay(e.target.value)} />
+      </label>
+      <div className="ws-sched-slots" role="radiogroup" aria-label="时段">
+        {SLOTS.map(s => <button key={s.id} type="button" role="radio" aria-checked={slot === s.id} className={slot === s.id ? 'is-on' : ''} onClick={() => setSlot(s.id)}>{s.label}</button>)}
+      </div>
+      {slot === 'custom' ? <label className="ws-sched-field">时间<input type="time" value={time} required onChange={e => setTime(e.target.value)} /></label> : null}
+      {previewAt ? <p className="ws-sched-selection">已选时段：{dateLabel(previewAt)} {weekdayName(new Date(previewAt))} {timeLabel(previewAt)}</p> : null}
+      {collision ? <p className="ws-warn ws-small">此时段已有安排，仍可继续排入。</p> : null}
+      <div className="ws-sched-picker-actions">
+        <button type="button" className="ws-btn" onClick={onClose}>取消</button>
+        <button type="submit" className="ws-btn is-primary" disabled={!id || !day || Boolean(pending) || Boolean(selectionMessage)}>排上日历</button>
+      </div>
+    </ScheduleModal>
   )
 }
 
-function NextUp({ data, onReschedule, weekOffset, onJumpWeek }) {
-  const [now, setNow] = React.useState(() => Date.now())
-  React.useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 30000); return () => clearInterval(timer) }, [])
-  const candidates = data.articles.filter(a => !a.archivedAt && !a.publishedAt && a.scheduledFor)
-    .sort((a, b) => a.scheduledFor.localeCompare(b.scheduledFor))
-  const next = candidates.find(a => new Date(a.scheduledFor).getTime() >= now) ?? null
-  const overdue = candidates.filter(a => new Date(a.scheduledFor).getTime() < now)
-  // 过点未发的最紧急，优先于未来排期显示
-  const target = overdue[0] ?? next
-  if (!target) return null
-  const at = new Date(target.scheduledFor).getTime()
-  const atDate = new Date(at)
-  const diff = at - now
-  const over = -diff
-  const isToday = dayKey(atDate) === dayKey(new Date(now))
-  const countdown = diff <= 0
-    ? (over < 3600000 ? `已过点 ${Math.max(1, Math.round(over / 60000))} 分钟`
-      : over < 86400000 ? `已过点 ${Math.floor(over / 3600000)} 小时 ${Math.floor(over % 3600000 / 60000)} 分`
-        : `已过点 ${Math.floor(over / 86400000)} 天 ${Math.floor(over % 86400000 / 3600000)} 小时`)
-    : diff < 3600000 ? `还有 ${Math.max(1, Math.round(diff / 60000))} 分钟`
-      : diff < 86400000 ? `还有 ${Math.floor(diff / 3600000)} 小时 ${Math.floor(diff % 3600000 / 60000)} 分`
-        : `还有 ${Math.floor(diff / 86400000)} 天 ${Math.floor(diff % 86400000 / 3600000)} 小时`
-  // 不带日期会把两周前的排期误读成本周；跨周时给一个跳回当周的入口
-  const dateLabel = `${atDate.getMonth() + 1}/${atDate.getDate()}`
-  const targetOffset = Math.round((mondayOf(atDate) - mondayOf(new Date(now))) / 604800000)
-  const publish = async () => { if (await act('articles/publish', { id: target.id })) toast('已标记发布。导入复盘数据后会自动对上这篇。') }
+function PublishDialog({ draft, now, onClose, onSave }) {
+  const correcting = Boolean(draft.publishedAt)
+  const legacy = correcting && !draft.publishMarkedAt
+  const [value, setValue] = React.useState(() => inputTime(new Date(correcting ? draft.publishedAt : now)))
+  const pending = useStudio(s => s.pending)
+  const submit = async event => {
+    event.preventDefault()
+    const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})$/.exec(value)
+    if (!match) return toast('请填写实际发表时间', true)
+    let at
+    try {
+      at = atOn(match[1], Number(match[2]), Number(match[3]))
+    } catch {
+      return toast('请填写有效的本地发表时间', true)
+    }
+    if (new Date(at).getTime() > Date.now()) return toast('实际发表时间不能晚于现在', true)
+    if (await onSave(draft, at)) onClose()
+  }
   return (
-    <section className={`ws-sched-next ${diff <= 0 ? 'is-overdue' : ''}`} aria-label={diff <= 0 ? '过点未发的稿件' : '下一篇要发的'}>
-      <CoverThumb draft={target} />
-      <div className="ws-sched-next-copy">
-        <span className="ws-muted ws-small">
-          {diff <= 0 ? '过点未发' : '下一篇'} · {dateLabel} {weekdayName(atDate)} {timeLabel(target.scheduledFor)}
-          {targetOffset !== weekOffset ? <button type="button" className="ws-link ws-sched-next-jump" onClick={() => onJumpWeek(targetOffset)}>定位到当周</button> : null}
-        </span>
-        <button type="button" className="ws-sched-next-title" onClick={() => openDraft(target)}>{target.title}</button>
-        <span className={diff <= 0 ? 'ws-warn' : 'ws-sched-count'}>{countdown}{diff <= 0 ? ' · 标记已发或取消排期后不再显示' : ''}</span>
+    <ScheduleModal label={correcting ? '更正发表时间' : '标记已发'} onClose={onClose} onSubmit={submit} returnFocusId={draft.id}>
+      <div className="ws-sched-picker-head">
+        <h2>{correcting ? '更正发表时间' : '标记已发'}</h2>
+        <button type="button" className="ws-icon-btn" aria-label="关闭" onClick={onClose}><Icon name="close" /></button>
       </div>
-      <div className="ws-sched-checklist">
-        {isToday || diff <= 0 ? <>
-          <button type="button" className="ws-btn" onClick={() => openDraft(target, 'layout')}>去排版复制</button>
-          {target.coverId ? <a className="ws-btn" href={coverUrl(target) + '&download=1'} download>下载封面</a> : <span className="ws-muted ws-small">还没有封面</span>}
-          <button type="button" className="ws-btn is-primary" onClick={publish}><Icon name="check" size={13} />标记已发</button>
-        </> : <>
-          <button type="button" className="ws-btn" onClick={() => onReschedule(target)}>改期</button>
-          <button type="button" className="ws-btn" onClick={publish}>提前标记已发</button>
-        </>}
+      <p className="ws-sched-picker-title">{draft.title}</p>
+      <label className="ws-sched-field">实际发表时间
+        <input type="datetime-local" value={value} max={inputTime(new Date(now))} required data-autofocus onChange={e => setValue(e.target.value)} />
+      </label>
+      <p className="ws-muted ws-small">{legacy ? '旧记录只能确认标记时间，请填写这篇稿件的真实发表时间。' : '可补记过去的时间；这里记录的是实际发表时间，不是点击标记的时间。'}</p>
+      <div className="ws-sched-picker-actions">
+        <button type="button" className="ws-btn" onClick={onClose}>取消</button>
+        <button type="submit" className="ws-btn is-primary" disabled={Boolean(pending)}>{correcting ? '保存更正' : '记录已发'}</button>
       </div>
-    </section>
+    </ScheduleModal>
   )
 }
 
 export function ScheduleView({ data }) {
-  const [weekOffset, setWeekOffset] = React.useState(0)
+  const [now, setNow] = React.useState(() => Date.now())
+  const [weekKey, setWeekKey] = React.useState(() => dayKey(mondayOf(new Date())))
   const [picker, setPicker] = React.useState(null)
+  const [publishDraft, setPublishDraft] = React.useState(null)
   const [overDay, setOverDay] = React.useState(null)
+  const [dockExpanded, setDockExpanded] = React.useState(false)
+  const [dockQuery, setDockQuery] = React.useState('')
+  const [dockFilter, setDockFilter] = React.useState('all')
+  const [scheduleNotice, setScheduleNotice] = React.useState(null)
+  const [locateId, setLocateId] = React.useState(null)
+  const cardLocks = React.useRef(new Set())
   const pending = useStudio(s => s.pending)
-  const now = Date.now()
-  const today = new Date()
-  const monday = addDays(mondayOf(today), weekOffset * 7)
+  React.useEffect(() => {
+    const update = () => setNow(Date.now())
+    const visible = () => { if (document.visibilityState === 'visible') update() }
+    const timer = setInterval(update, 30000)
+    document.addEventListener('visibilitychange', visible)
+    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', visible) }
+  }, [])
+  React.useEffect(() => {
+    if (!locateId) return
+    const card = document.getElementById(`ws-sched-entry-${locateId}`)
+    if (!card) return
+    card.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    card.focus({ preventScroll: true })
+    setLocateId(null)
+  }, [locateId, weekKey, data.articles])
+  const today = new Date(now)
+  const currentWeekKey = dayKey(mondayOf(today))
+  const monday = parseDay(weekKey)
   const days = Array.from({ length: 7 }, (_, i) => addDays(monday, i))
   const active = data.articles.filter(a => !a.archivedAt)
   const dock = active.filter(a => !a.scheduledFor && !a.publishedAt)
+  const readyDock = dock.filter(a => a.readiness.done === a.readiness.total)
+  const normalizedDockQuery = dockQuery.trim().toLocaleLowerCase()
+  const visibleDock = dock.filter(a => (dockFilter === 'all' || a.readiness.done === a.readiness.total) && (!normalizedDockQuery || a.title.toLocaleLowerCase().includes(normalizedDockQuery)))
   const scheduled = active.filter(a => a.scheduledFor && !a.publishedAt)
   const published = active.filter(a => a.publishedAt)
   const weekStart = dayKey(days[0])
   const weekEnd = dayKey(days[6])
   const weekPublished = published.filter(a => { const k = dayKey(new Date(pubSlot(a))); return k >= weekStart && k <= weekEnd }).length
-  const byDay = key => ({
-    scheduled: scheduled.filter(a => dayKey(new Date(a.scheduledFor)) === key).sort((a, b) => a.scheduledFor.localeCompare(b.scheduledFor)),
-    published: published.filter(a => dayKey(new Date(pubSlot(a))) === key).sort((a, b) => pubSlot(a).localeCompare(pubSlot(b))),
+  const byDay = key => [...scheduled, ...published]
+    .filter(a => dayKey(new Date(pubSlot(a))) === key)
+    .sort((a, b) => new Date(pubSlot(a)) - new Date(pubSlot(b)) || a.id.localeCompare(b.id))
+  const withCardLock = async (id, action) => {
+    if (cardLocks.current.has(id)) return false
+    cardLocks.current.add(id)
+    try { return await action() } finally { cardLocks.current.delete(id) }
+  }
+  const saveSchedule = (id, at) => withCardLock(id, () => act('schedule/set', { id, at }))
+  const notifySchedule = (id, at) => {
+    const collision = scheduled.some(a => a.id !== id && a.scheduledFor === at)
+    const text = `已排到 ${dateLabel(at)} ${weekdayName(new Date(at))} ${timeLabel(at)}${collision ? '；此时段已有安排，仍已保留' : ''}`
+    const targetWeek = dayKey(mondayOf(new Date(at)))
+    if (targetWeek === weekKey) { setScheduleNotice(null); toast(text) }
+    else setScheduleNotice({ text, targetWeek })
+  }
+  const locate = draft => {
+    setScheduleNotice(null)
+    setWeekKey(dayKey(mondayOf(new Date(pubSlot(draft)))))
+    setLocateId(draft.id)
+  }
+  const savePublication = (draft, at) => withCardLock(draft.id, async () => {
+    const path = draft.publishedAt ? 'articles/correct-publish' : 'articles/publish'
+    if (!await act(path, { id: draft.id, at })) return false
+    toast('已记录发表时间')
+    return true
   })
   const dragStart = (e, draft) => { e.dataTransfer.setData('text/plain', draft.id); e.dataTransfer.effectAllowed = 'move' }
   const dropOnDay = async (id, key) => {
@@ -303,39 +371,63 @@ export function ScheduleView({ data }) {
     if (!draft || draft.publishedAt || pending) return
     if (draft.scheduledFor && dayKey(new Date(draft.scheduledFor)) === key) return
     const old = draft.scheduledFor ? new Date(draft.scheduledFor) : null
-    const at = atOn(key, old ? old.getHours() : 20, old ? old.getMinutes() : 0)
-    if (await act('schedule/set', { id, at })) toast(`已排到 ${weekdayName(parseDay(key))} ${timeLabel(at)}`)
+    let at
+    try {
+      at = atOn(key, old ? old.getHours() : 20, old ? old.getMinutes() : 0)
+    } catch {
+      return toast('这个本地时刻不存在，请通过「改期」另选时间', true)
+    }
+    if (await saveSchedule(id, at)) notifySchedule(id, at)
   }
   const dropOnDock = async id => {
+    setOverDay(null)
     const draft = active.find(a => a.id === id)
     if (!draft?.scheduledFor || pending) return
-    if (await act('schedule/clear', { id })) toast('已移回待排')
+    if (await withCardLock(id, () => act('schedule/clear', { id }))) toast('已移回待排')
   }
-  const unschedule = async draft => { if (await act('schedule/clear', { id: draft.id })) toast('已取消排期，回到待排') }
+  const unschedule = draft => withCardLock(draft.id, async () => { if (await act('schedule/clear', { id: draft.id })) toast('已取消排期，回到待排') })
+  const unpublishDraft = draft => withCardLock(draft.id, async () => { if (await act('articles/unpublish', { id: draft.id })) toast('已撤销发布标记') })
   const pickFor = draft => setPicker({ id: draft.id, day: draft.scheduledFor ? dayKey(new Date(draft.scheduledFor)) : dayKey(today) })
-  const publish = async draft => { if (await act('articles/publish', { id: draft.id })) toast('已标记发布。导入复盘数据后会自动对上这篇。') }
+  const publish = draft => setPublishDraft(draft)
   return (
     <main className="ws-sched">
       <header className="ws-sched-head">
-        <div><h1>排期</h1><p className="ws-muted">{dock.length} 篇待排 · 本周已发 {weekPublished} 篇</p></div>
+        <div><h1>排期</h1><p className="ws-muted">{dock.length} 篇待排 · 所选周计划内已发 {weekPublished} 篇 · {zoneLabel(today)}</p></div>
         <div className="ws-sched-weeknav">
-          <button type="button" className="ws-btn" onClick={() => setWeekOffset(w => w - 1)}>上一周</button>
-          <button type="button" className="ws-btn" disabled={weekOffset === 0} onClick={() => setWeekOffset(0)}>本周</button>
-          <button type="button" className="ws-btn" onClick={() => setWeekOffset(w => w + 1)}>下一周</button>
+          <button type="button" className="ws-btn" onClick={() => setWeekKey(dayKey(addDays(monday, -7)))}>上一周</button>
+          <button type="button" className="ws-btn" disabled={weekKey === currentWeekKey} onClick={() => setWeekKey(dayKey(mondayOf(new Date(now))))}>回到本周</button>
+          <button type="button" className="ws-btn" onClick={() => setWeekKey(dayKey(addDays(monday, 7)))}>下一周</button>
           <span className="ws-muted ws-small">{days[0].getMonth() + 1} 月 {days[0].getDate()} 日 – {days[6].getMonth() + 1} 月 {days[6].getDate()} 日</span>
         </div>
       </header>
       <div className="ws-sched-body">
-        <aside className="ws-sched-dock" aria-label="待排稿件"
+        <aside className={`ws-sched-dock ${dockExpanded ? 'is-expanded' : ''}`} aria-label="待排稿件"
           onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move' }}
           onDrop={e => { e.preventDefault(); dropOnDock(e.dataTransfer.getData('text/plain')) }}>
-          <h2 className="ws-pane-title">待排 <span>{dock.length}</span></h2>
-          {dock.length ? dock.map(d => <DockCard key={d.id} draft={d} onPick={pickFor} onDragStart={dragStart} />)
-            : <p className="ws-muted ws-small">稿件都排上了。新写一篇，或把日历上的卡拖回来。</p>}
-          <p className="ws-muted ws-small ws-sched-dock-hint">拖到右边某天即可排期；点「排期」可选时段。</p>
+          <h2 className="ws-pane-title">待排 <span>{dock.length}</span><small>就绪 {readyDock.length}</small></h2>
+          <button type="button" className="ws-sched-dock-toggle" aria-expanded={dockExpanded} aria-controls="ws-sched-dock-content" onClick={() => setDockExpanded(value => !value)}>待排 {dock.length} 篇 · 就绪 {readyDock.length} 篇<Icon name="chevron" size={14} /></button>
+          <div className="ws-sched-dock-content" id="ws-sched-dock-content">
+            {dock.length ? <div className="ws-sched-dock-tools">
+              <input type="search" aria-label="搜索待排稿件" placeholder="搜索稿件" value={dockQuery} onChange={event => setDockQuery(event.target.value)} />
+              <div className="ws-sched-dock-filters" role="group" aria-label="待排就绪筛选">
+                <button type="button" aria-pressed={dockFilter === 'all'} className={dockFilter === 'all' ? 'is-on' : ''} onClick={() => setDockFilter('all')}>全部</button>
+                <button type="button" aria-pressed={dockFilter === 'ready'} className={dockFilter === 'ready' ? 'is-on' : ''} onClick={() => setDockFilter('ready')}>就绪</button>
+              </div>
+              <span className="ws-muted ws-small" role="status">显示 {visibleDock.length} / {dock.length} 篇</span>
+            </div> : null}
+            {visibleDock.map(d => <DockCard key={d.id} draft={d} onPick={pickFor} onDragStart={dragStart} onDragEnd={() => setOverDay(null)} />)}
+            {dock.length && !visibleDock.length ? <div className="ws-muted ws-small"><p>没有匹配的待排稿件。</p><button type="button" className="ws-link" onClick={() => { setDockQuery(''); setDockFilter('all') }}>清空搜索与筛选</button></div> : null}
+            {!dock.length ? <div className="ws-muted ws-small">
+              <p>{!active.length ? '还没有稿件，先写一篇再来排期。' : scheduled.length ? '没有待排稿件，可从日历改期或取消。' : '当前没有待排稿件。'}</p>
+              {!active.length ? <button type="button" className="ws-link" onClick={() => setState({ module: 'paper', paperHome: true })}>去写第一篇</button> : null}
+            </div> : null}
+            <p className="ws-muted ws-small ws-sched-dock-hint">拖到某天默认排到晚 20:00；已排稿件改期保留原时分。</p>
+          </div>
         </aside>
-        <section className="ws-sched-main" aria-label="周日历">
-          <NextUp data={data} onReschedule={pickFor} weekOffset={weekOffset} onJumpWeek={setWeekOffset} />
+        <section className="ws-sched-main" aria-label="排期议程与周日历">
+          <ScheduleAgenda scheduled={scheduled} now={now} onPublish={publish} onReschedule={pickFor} onUnschedule={unschedule} onLocate={locate} />
+          {scheduleNotice ? <div className="ws-sched-notice" role="status">{scheduleNotice.text}<button type="button" className="ws-link" onClick={() => { setWeekKey(scheduleNotice.targetWeek); setScheduleNotice(null) }}>查看当周</button></div> : null}
+          {!scheduled.length && !published.length ? <p className="ws-muted ws-small">还没有排期，从待排稿件选一篇，或点某日的「＋」。</p> : null}
           <div className="ws-sched-week">
             {days.map(date => {
               const key = dayKey(date)
@@ -343,15 +435,14 @@ export function ScheduleView({ data }) {
               return (
                 <div key={key} className={`ws-sched-day ${key === dayKey(today) ? 'is-today' : ''} ${overDay === key ? 'is-over' : ''}`}
                   onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setOverDay(key) }}
-                  onDragLeave={() => setOverDay(current => current === key ? null : current)}
+                  onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setOverDay(current => current === key ? null : current) }}
                   onDrop={e => { e.preventDefault(); dropOnDay(e.dataTransfer.getData('text/plain'), key) }}>
-                  <header className="ws-sched-day-head"><span>{weekdayName(date)}</span><b>{date.getMonth() + 1}/{date.getDate()}</b></header>
+                  <header className="ws-sched-day-head"><span>{weekdayName(date)} <b>{date.getMonth() + 1}/{date.getDate()}</b></span><button type="button" className="ws-icon-btn" aria-label={`在 ${key} 排一篇`} title="排一篇" onClick={() => setPicker({ id: null, day: key })}><Icon name="plus" size={14} /></button></header>
                   <div className="ws-sched-day-list">
-                    {rows.scheduled.map(d => <ScheduledCard key={d.id} draft={d} now={now} onPick={pickFor} onUnschedule={unschedule} onPublish={publish} onDragStart={dragStart} />)}
-                    {rows.published.map(d => <PublishedCard key={d.id} draft={d} />)}
-                    {!rows.scheduled.length && !rows.published.length ? (
-                      <button type="button" className="ws-sched-empty" onClick={() => setPicker({ id: null, day: key })}><Icon name="plus" size={13} />排一篇</button>
-                    ) : null}
+                    {rows.map(d => d.publishedAt
+                      ? <PublishedCard key={d.id} draft={d} onCorrect={publish} onUnpublish={unpublishDraft} />
+                      : <ScheduledCard key={d.id} draft={d} now={now} onPick={pickFor} onUnschedule={unschedule} onPublish={publish} onDragStart={dragStart} onDragEnd={() => setOverDay(null)} />)}
+                    {!rows.length ? <span className="ws-sched-empty">暂无安排</span> : null}
                   </div>
                 </div>
               )
@@ -359,7 +450,8 @@ export function ScheduleView({ data }) {
           </div>
         </section>
       </div>
-      {picker ? <SchedulePicker data={data} picker={picker} onClose={() => setPicker(null)} /> : null}
+      {picker ? <SchedulePicker data={data} picker={picker} onClose={() => setPicker(null)} onSave={saveSchedule} onSaved={notifySchedule} /> : null}
+      {publishDraft ? <PublishDialog draft={publishDraft} now={now} onClose={() => setPublishDraft(null)} onSave={savePublication} /> : null}
     </main>
   )
 }

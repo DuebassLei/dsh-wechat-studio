@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { readFile } from 'node:fs/promises'
 import { defaultSelection, listModels, modelInfo, modelOverride, modelStatus, setModelOverride, skillSources } from './ai.js'
 import { BANNER_CHOICES, BANNER_STYLES, DEFAULT_BANNER } from './banner.js'
-import { blockKind, clearSchedule, createArticle, fixPlan, HOOK_IDS, isCheckable, listMeta, markPublished, newId, revisionChanges, setSchedule, snapshot, splitMarkdown, toMarkdown, touch, undo, unpublish } from './article.js'
+import { blockKind, clearSchedule, correctPublishedAt, createArticle, fixPlan, HOOK_IDS, isCheckable, listMeta, markPublished, newId, revisionChanges, setSchedule, snapshot, splitMarkdown, toMarkdown, touch, undo, unpublish } from './article.js'
 import { transferFeishuImages, uploadInlineImage } from './cloudinary.js'
 import { feishuImageUrls, replaceFeishuImages } from './markdown-images.js'
 import { generateInlineImage, readInlineAsset, readInlineImage, removeInlineImages, removeOrphanInlineImages, saveInlineImage } from './inline-assets.js'
@@ -18,6 +18,7 @@ import { applyRule, buildInsights, EXPERIMENT_RESULTS, importData, INSIGHTS_EMPT
 import { Pipeline } from './pipeline.js'
 import { pdfToText } from './report.js'
 import { publicSettings, readSettings, updateSettings } from './settings.js'
+import { scheduleTime as parseScheduleTime } from './schedule-time.js'
 import { Store } from './store.js'
 import { detect } from './zhuque.js'
 
@@ -409,11 +410,21 @@ function notBusy(pipeline, id) {
 }
 
 function scheduleTime(value) {
-  const date = new Date(value)
-  if (typeof value !== 'string' || Number.isNaN(date.getTime()) || date.getFullYear() < 2000 || date.getFullYear() > 2100) {
+  try {
+    return parseScheduleTime(value)
+  } catch {
     throw Object.assign(new Error('请选择有效的发布时间。'), { status: 400 })
   }
-  return date.toISOString()
+}
+
+function mustActive(article, message) {
+  if (article.archivedAt) throw Object.assign(new Error(message), { status: 409 })
+}
+
+function mustPastPublication(at) {
+  if (new Date(at).getTime() > Date.now()) {
+    throw Object.assign(new Error('实际发表时间不能晚于现在。'), { status: 400 })
+  }
 }
 
 /**
@@ -725,7 +736,7 @@ export async function route(deps, req, res) {
       const at = scheduleTime(body.at)
       await store.update(state => {
         const article = mustFind(state, body.id)
-        if (article.archivedAt) throw Object.assign(new Error('归档稿件不能排期，请先恢复。'), { status: 409 })
+        mustActive(article, '归档稿件不能排期，请先恢复。')
         if (article.publishedAt) throw Object.assign(new Error('这篇已标记发布，不能改期。'), { status: 409 })
         setSchedule(article, at)
       })
@@ -734,6 +745,7 @@ export async function route(deps, req, res) {
     case 'schedule/clear': {
       await store.update(state => {
         const article = mustFind(state, body.id)
+        mustActive(article, '归档稿件不能取消排期，请先恢复。')
         if (article.publishedAt) throw Object.assign(new Error('这篇已标记发布，不能取消排期。'), { status: 409 })
         clearSchedule(article)
       })
@@ -743,13 +755,29 @@ export async function route(deps, req, res) {
       const at = body.at == null ? new Date().toISOString() : scheduleTime(body.at)
       await store.update(state => {
         const article = mustFind(state, body.id)
-        if (article.archivedAt) throw Object.assign(new Error('归档稿件不能标记发布，请先恢复。'), { status: 409 })
-        markPublished(article, at)
+        mustActive(article, '归档稿件不能标记发布，请先恢复。')
+        mustPastPublication(at)
+        markPublished(article, at, new Date().toISOString())
+      })
+      return ok()
+    }
+    case 'articles/correct-publish': {
+      const at = scheduleTime(body.at)
+      await store.update(state => {
+        const article = mustFind(state, body.id)
+        mustActive(article, '归档稿件不能更正发表时间，请先恢复。')
+        if (!article.publishedAt) throw Object.assign(new Error('这篇还没有发布记录。'), { status: 409 })
+        mustPastPublication(at)
+        correctPublishedAt(article, at)
       })
       return ok()
     }
     case 'articles/unpublish': {
-      await store.update(state => { unpublish(mustFind(state, body.id)) })
+      await store.update(state => {
+        const article = mustFind(state, body.id)
+        mustActive(article, '归档稿件不能撤销发布标记，请先恢复。')
+        unpublish(article)
+      })
       return ok()
     }
     case 'articles/archive':

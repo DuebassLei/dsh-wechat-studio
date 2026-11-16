@@ -257,13 +257,23 @@ export function clearSchedule(article) {
   touch(article)
 }
 
-export function markPublished(article, at) {
+export function markPublished(article, at, markedAt) {
+  if (article.publishedAt) return false
+  article.publishedAt = at
+  if (markedAt) article.publishMarkedAt = markedAt
+  touch(article)
+  return true
+}
+
+export function correctPublishedAt(article, at) {
+  if (!article.publishMarkedAt) article.publishMarkedAt = article.publishedAt
   article.publishedAt = at
   touch(article)
 }
 
 export function unpublish(article) {
   delete article.publishedAt
+  delete article.publishMarkedAt
   touch(article)
 }
 
@@ -279,6 +289,7 @@ export function listMeta(article, { bannerReady = false } = {}) {
     checked: Boolean(article.zhuque?.round),
     scheduledFor: article.scheduledFor ?? null,
     publishedAt: article.publishedAt ?? null,
+    publishMarkedAt: article.publishMarkedAt ?? null,
     readiness: readiness(article, { bannerReady }),
   }
 }

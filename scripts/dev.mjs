@@ -47,6 +47,15 @@ const replies = {
     const blocks = [...user.split('# 文章段落').pop().matchAll(/【(\d+)】/g)].map(m => Number(m[1]))
     return JSON.stringify({ overall: { human: 62, suspect: 31, ai: 7 }, segments: [{ block: blocks[1], score: 0.93 }, { block: blocks.at(-2), score: 0.56 }].filter(row => row.block) })
   },
+  'svg-card-draft': user => {
+    const { kind } = JSON.parse(user)
+    const card = kind === 'svg-phone'
+      ? { title: '按规则演示提醒', lines: ['按写作流程演示', '到点提醒 | 09:00 | 该写稿了', '没回就催 | 14:30 | 还没打卡，再提醒一次', '打卡 | 我 | 已完成'] }
+      : kind === 'svg-concept'
+        ? { title: '什么是 Personal Agent', lines: ['一个记得你、会主动找你的 AI', '以前的 AI | 你问一句 | 它答一句', 'Personal Agent | 记住你的习惯 | 替你盯着事 | 到点主动找你', '! 关键差别：不用每次重新交代'] }
+        : { title: '三步完成初剪', lines: ['打开首页 | 点「口播剪辑」', '引用素材 | 用 @ 选上一个项目', '直接发送 | 预填的要求不用改'] }
+    return JSON.stringify(card)
+  },
   'inline-diagrams': user => {
     const article = JSON.parse(user)
     if (article.title.includes('短稿无图')) return JSON.stringify({ suggestions: [] })

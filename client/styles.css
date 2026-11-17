@@ -248,6 +248,8 @@ body[data-ds-dark-theme] .ws-root { color-scheme: dark; --ok: #6fcb9c; --bad: #f
 .ws-side-count { padding: 0 5px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 11px; font-variant-numeric: tabular-nums; }
 .ws-side-content:not([hidden]) { display: flex; flex-direction: column; gap: 16px; flex: 1; min-height: 0; overflow: auto; padding: 14px; }
 .ws-side-content > * { flex: none; }
+.ws-images-panel > .ws-sec + .ws-sec { margin-top: 2px; padding-top: 18px; border-top: 1px solid var(--line); }
+.ws-images-panel > .ws-sec > .ws-sec-head > .ws-pane-title { color: var(--ink); font-size: 14px; font-weight: 650; }
 .ws-side-title { font-weight: 650; line-height: 1.5; overflow-wrap: anywhere; }
 .ws-side-candidates, .ws-side-placeholder { padding-top: 12px; border-top: 1px solid var(--line); }
 .ws-sec { display: flex; flex-direction: column; gap: 8px; }
@@ -809,6 +811,56 @@ body[data-ds-dark-theme] .ws-root { color-scheme: dark; --ok: #6fcb9c; --bad: #f
   .ws-ins-row { grid-template-columns: minmax(0, 1fr) 60px 48px; }
 }
 
+/* 公众号 SVG 动画卡 */
+.ws-svg-pane { gap: 10px; }
+.ws-svg-pane .ws-field { gap: 5px; font-size: 12px; }
+.ws-svg-pane .ws-field select, .ws-svg-pane .ws-field input { width: 100%; min-width: 0; padding: 7px 9px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--panel); color: var(--ink); font-size: 12px; }
+.ws-svg-type-current { display: grid; grid-template-columns: 104px minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; padding: 8px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--card); text-align: left; }
+.ws-svg-type-current:hover { border-color: var(--accent); }
+.ws-svg-type-current > img { width: 104px; height: 72px; object-fit: contain; border-radius: 6px; background: #F4F8FD; }
+.ws-svg-type-current > span:not(.ws-link) { display: grid; gap: 3px; min-width: 0; }
+.ws-svg-type-current small { color: var(--ink2); font-size: 11px; line-height: 16px; }
+.ws-svg-type-current code { color: var(--ink2); font-size: 10px; }
+.ws-svg-type-dialog { width: min(720px, calc(100% - 32px)); max-width: none; max-height: min(82dvh, 760px); margin: auto; padding: 16px; gap: 12px; overflow: hidden; color: var(--ink); }
+.ws-svg-type-dialog:not([open]) { display: none; }
+.ws-svg-type-dialog::backdrop { background: rgb(0 0 0 / .38); }
+.ws-svg-type-dialog > .ws-dialog-head { flex: none; }
+.ws-svg-type-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; min-height: 0; padding: 2px; overflow: auto; overscroll-behavior: contain; }
+.ws-svg-type-option { display: grid; gap: 5px; min-width: 0; padding: 8px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--card); text-align: left; }
+.ws-svg-type-option:hover { border-color: var(--accent); }
+.ws-svg-type-option.is-on { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 1px var(--accent); }
+.ws-svg-type-option > img { width: 100%; height: 108px; object-fit: contain; border-radius: 6px; background: #F4F8FD; }
+.ws-svg-type-name { display: flex; align-items: center; justify-content: space-between; font-size: 14px; }
+.ws-svg-type-name > span { color: var(--accent); }
+@media (max-width: 560px) {
+  .ws-svg-type-dialog { width: calc(100% - 20px); max-height: calc(100dvh - 24px); padding: 12px; }
+  .ws-svg-type-grid { grid-template-columns: minmax(0, 1fr); }
+  .ws-svg-type-option > img { height: 104px; }
+}
+.ws-svg-candidate { display: grid; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--card); }
+.ws-svg-candidate-head { display: grid; gap: 3px; }
+.ws-svg-candidate-target { padding: 8px; border-radius: var(--r-sm); background: var(--panel); font-size: 12px; }
+.ws-svg-candidate-target > div { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px 8px; }
+.ws-svg-candidate-target p { margin-top: 4px; color: var(--ink2); line-height: 18px; overflow-wrap: break-word; }
+.ws-svg-preview-ready { color: var(--good); font-size: 11px; }
+.ws-svg-inserted { display: flex; align-items: center; flex-wrap: wrap; gap: 5px 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--panel); font-size: 12px; }
+.ws-svg-inserted > span { flex: 1; min-width: 150px; }
+.ws-svg-inserted .ws-icon-btn { margin-left: auto; }
+.ws-svg-candidate-mismatch { display: grid; gap: 8px; padding: 8px; border: 1px solid var(--sched-warn, var(--line)); border-radius: var(--r-sm); background: var(--panel); font-size: 12px; }
+.ws-svg-candidate-mismatch > div { display: flex; gap: 7px; flex-wrap: wrap; }
+.ws-svg-line-editor { display: grid; gap: 7px; }
+.ws-svg-line-editor label { display: grid; grid-template-columns: 54px minmax(0, 1fr); align-items: center; gap: 6px; color: var(--ink2); font-size: 11px; }
+.ws-svg-line-editor input { width: 100%; min-width: 0; padding: 6px 7px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--panel); color: var(--ink); font-size: 12px; }
+.ws-svg-numeric-note { color: var(--ink2); font-size: 11px; line-height: 17px; }
+.ws-svg-candidate-actions, .ws-svg-card-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ws-svg-candidate-actions .ws-btn { padding: 6px 8px; font-size: 12px; }
+.ws-svg-card { margin: 6px 0; padding: 10px; border: 1px solid var(--paper-line); border-radius: 8px; background: var(--card); cursor: default; }
+.ws-svg-card-compact { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ws-svg-card-compact > strong { min-width: 0; overflow-wrap: break-word; }
+.ws-svg-card-actions { margin-left: auto; }
+.ws-svg-card-frame { display: block; width: 100%; min-height: 120px; margin: 10px 0 0; border: 0; background: transparent; }
+.ws-svg-block:hover { background: transparent; }
+
 /* 排期 */
 .ws-sched { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: auto; padding: clamp(18px, 3cqw, 40px); background: radial-gradient(ellipse at top right, var(--accent-soft), transparent 55%), var(--bg); --sched-warn: #a16207; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
 body[data-ds-dark-theme] .ws-sched { --sched-warn: #e2b93b; }
@@ -955,5 +1007,11 @@ body[data-ds-dark-theme] .ws-sched { --sched-warn: #e2b93b; }
   .ws-sched-next-line > button:not(.ws-link) { grid-column: 1 / -1; grid-row: 2; white-space: normal; }
   .ws-sched-next-line .ws-sched-count { grid-column: 1; grid-row: 3; }
   .ws-sched-next-line .ws-link { grid-column: 2; grid-row: 3; }
+}
+@container (max-width: 560px) {
+  .ws-svg-type-grid { grid-template-columns: 1fr; }
+  .ws-svg-type-current { grid-template-columns: 80px minmax(0, 1fr); }
+  .ws-svg-type-current > img { width: 80px; height: 60px; }
+  .ws-svg-type-current > .ws-link { grid-column: 1 / -1; }
 }
 @media (prefers-reduced-motion: reduce) { .ws-sched-day { transition: none; } }

@@ -16,6 +16,7 @@ import { act, copyDetectionText, copyMarkdown, copyText, countCurrentParagraphDr
 import { InsightsView } from './insights.jsx'
 import { InlineDiagramDialog, InlineDiagramPane } from './inline-diagrams.jsx'
 import { ScheduleView } from './schedule.jsx'
+import { isSvgCardText, SvgCardBlock, SvgCardsPane } from './svg-cards.jsx'
 
 const ICONS = {
   check: 'M3 8.5l3.2 3.2L13 5',
@@ -84,8 +85,9 @@ function PaperImage({ src, caption, long }) {
   </div>
 }
 
-function BlockBody({ block, sectionNumber }) {
+function BlockBody({ block, sectionNumber, articleId, layoutPreferences }) {
   const { kind, text } = block
+  if (kind === 'code' && isSvgCardText(text)) return <SvgCardBlock articleId={articleId} block={block} layoutPreferences={layoutPreferences} />
   if (kind === 'heading') {
     const level = /^#+/.exec(text)[0].length
     const heading = text.replace(/^#+\s+/, '')
@@ -514,7 +516,9 @@ function Paper({ article, reviewTarget }) {
                 setState({ editing: null })
                 requestAnimationFrame(() => document.getElementById(`ws-review-${article.id}-${block.id}`)?.querySelector('.ws-block')?.focus({ preventScroll: true }))
               }} />
-                : <button type="button" className="ws-block" disabled={Boolean(job || pending)} title="点一下直接改这一段" onClick={() => openParagraph(article.id, block.id)}>
+                : isSvgCardText(block.text) ? <div className="ws-block ws-svg-block">
+                  <BlockBody block={block} sectionNumber={headingNumber} articleId={article.id} layoutPreferences={article.effectiveLayoutPreferences} />
+                </div> : <button type="button" className="ws-block" disabled={Boolean(job || pending)} title="点一下直接改这一段" onClick={() => openParagraph(article.id, block.id)}>
                   <BlockBody block={block} sectionNumber={headingNumber} />
                   {draftsFor(article.id).has(block.id) ? <span className="ws-unsaved">有未保存的修改</span> : null}
                 </button>}
@@ -1065,10 +1069,11 @@ function SidePane({ article, tab, onTab, tabId, flagged, retest, ready, reviewTa
       </div>
     </div>
     {SIDE_TABS.map(([id]) => <div key={id} role="tabpanel" id={tabId + '-panel-' + id}
-      aria-labelledby={tabId + '-' + id} className="ws-side-content" hidden={tab !== id} tabIndex={0}>
+      aria-labelledby={tabId + '-' + id} className={`ws-side-content ${id === 'images' ? 'ws-images-panel' : ''}`} hidden={tab !== id} tabIndex={0}>
       {id === 'article' ? <ArticleInfoPane article={article} /> : id === 'images' ? <>
         <CoverPane article={article} />
         <InlineDiagramPane article={article} cloudinaryReady={cloudinaryReady} onReviewJump={onReviewJump} unsavedCount={unsavedCount} />
+        <SvgCardsPane article={article} reviewTarget={reviewTarget} unsavedCount={unsavedCount} onReviewJump={onReviewJump} />
       </> : <QualityPane article={article} ready={ready} reviewTarget={reviewTarget} onReviewJump={onReviewJump} />}
     </div>)}
   </aside>
@@ -1554,6 +1559,7 @@ const SKILL_INFO = {
   banner: { name: '开头横幅', use: '按文章写横幅规格' },
   cover: { name: '封面生成', use: '按文章和所选风格填写封面提示词。技能、六套风格模板和禁用词表都在内置技能目录。' },
   'inline-diagram': { name: '正文插图', use: '识别插图位置，从技能目录动态读取全部风格。可在覆盖目录中增加或覆盖风格文件。' },
+  'wechat-svg-cards': { name: '公众号动画卡片', use: '按段落生成概念、步骤、对比、数据与演示卡，使用同一排版引擎导出 SMIL 动画。' },
 }
 
 function Rail({ module }) {

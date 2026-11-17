@@ -7,7 +7,7 @@ export function countCurrentParagraphDrafts(blocks, drafts) {
   return blocks.filter(block => drafts.has(block.id)).length
 }
 
-let snap = { data: null, error: null, view: 'paper', paperHome: true, dialog: null, toast: null, editing: null, layout: null, pending: null, chatOpen: true, bannerTried: {}, module: 'paper', skills: null, settings: null, insights: null, insightsRange: 'all', insightsError: null, insightsRulePreview: null }
+let snap = { data: null, error: null, view: 'paper', paperHome: true, dialog: null, toast: null, editing: null, layout: null, pending: null, chatOpen: true, bannerTried: {}, module: 'paper', skills: null, settings: null, insights: null, insightsRange: 'all', insightsError: null, insightsRulePreview: null, svgCardCandidate: null }
 const listeners = new Set()
 let timer = null
 
@@ -40,6 +40,10 @@ async function request(path, options) {
   }
   if (!res.ok) throw new Error(body?.error || `请求失败（${res.status}）`)
   return body
+}
+
+export function postJson(path, body) {
+  return request(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
 }
 
 const bodyKey = (current, brand) => (current ? [current.id, current.title, current.banner?.style, current.banner?.at, current.followCard, brand?.author, brand?.slogan, ...current.blocks.map(b => b.text)].join('\u0001') : '')
@@ -128,6 +132,31 @@ export async function copyText(text, done) {
     area.remove()
   }
   toast(ok ? done : '浏览器没让写剪贴板，请手动复制', !ok)
+  return ok
+}
+
+export async function copyRichText(html, done = '已复制动画卡片') {
+  const plain = html.replace(/<[^>]+>/g, '')
+  let ok = false
+  const legacy = event => {
+    event.clipboardData.setData('text/html', html)
+    event.clipboardData.setData('text/plain', plain)
+    event.preventDefault()
+    ok = true
+  }
+  document.addEventListener('copy', legacy)
+  try { ok = document.execCommand('copy') && ok } catch { ok = false }
+  document.removeEventListener('copy', legacy)
+  if (!ok && navigator.clipboard && window.ClipboardItem) {
+    try {
+      await navigator.clipboard.write([new ClipboardItem({
+        'text/html': new Blob([html], { type: 'text/html' }),
+        'text/plain': new Blob([plain], { type: 'text/plain' }),
+      })])
+      ok = true
+    } catch {}
+  }
+  toast(ok ? done : '浏览器没让写剪贴板，请在排版预览中复制', !ok)
   return ok
 }
 

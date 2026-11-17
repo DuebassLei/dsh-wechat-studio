@@ -13,7 +13,7 @@ import { analyzeInlineDiagrams, DIAGRAM_KINDS, insertDiagramBlock, sourceHash } 
 import { loadInlineStyle, readInlineStyleCatalog } from './inline-skill.js'
 import { coverPrompt, generateArkCover, generateBailianCover, readCover, saveCover } from './cover.js'
 import { COVER_STYLES } from './cover-styles.js'
-import { STYLES, THEMES, detectionText, renderLayout } from './layout.js'
+import { STYLES, THEMES, detectionText, renderLayout, resolveLayoutPreferences } from './layout.js'
 import { applyRule, buildInsights, EXPERIMENT_RESULTS, importData, INSIGHTS_EMPTY, previewRule } from './insights.js'
 import { Pipeline } from './pipeline.js'
 import { pdfToText } from './report.js'
@@ -21,6 +21,7 @@ import { publicSettings, readSettings, updateSettings } from './settings.js'
 import { scheduleTime as parseScheduleTime } from './schedule-time.js'
 import { Store } from './store.js'
 import { detect } from './zhuque.js'
+import { draftSvgCard, insertSvgCard, previewSvgCard } from './svg-cards.js'
 
 const MAX_JSON = 2_000_000
 const MAX_PDF = 30_000_000
@@ -340,7 +341,7 @@ function startImageImport(deps, article, urls) {
   }).finally(() => jobs.delete(article.id))
 }
 
-function view(article, pipeline, store, inlineStyles = [], inlineStyleWarnings = []) {
+function view(article, pipeline, store, inlineStyles = [], inlineStyleWarnings = [], settings = {}) {
   if (!article) return null
   const currentText = new Map(article.blocks.map(block => [block.id, block.text]))
   const previousText = new Map()
@@ -363,6 +364,7 @@ function view(article, pipeline, store, inlineStyles = [], inlineStyleWarnings =
     banner: bannerView(article),
     followCard: article.followCard === true,
     layoutPreferences: article.layoutPreferences ?? null,
+    effectiveLayoutPreferences: resolveLayoutPreferences(settings, article),
     fixPlan: (({ picked, skipped }) => ({ count: picked.length, skipped }))(fixPlan(article)),
     chat: article.chat.slice(-40), canUndo: article.history.length > 0, zhuque: article.zhuque, notice: article.notice ?? null,
     job: pipeline.job(article.id),
@@ -388,7 +390,7 @@ async function snapshotState(ctx, store, pipeline) {
     zhuqueReady: Boolean(settings.zhuqueKey),
     cloudinaryReady: Boolean(settings.cloudinary?.cloudName && settings.cloudinary?.apiKey && settings.cloudinary?.apiSecret),
     articles: state.articles.map(article => listMeta(article, { bannerReady: bannerView(article).ready })).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
-    current: view(current, pipeline, store, inlineCatalog.styles, inlineCatalog.warnings),
+    current: view(current, pipeline, store, inlineCatalog.styles, inlineCatalog.warnings, settings),
     model: info ? info.model : null, modelPinned: Boolean(modelOverride()), modelOk: modelStatus.ok, modelError: modelStatus.error,
   }
 }
@@ -502,7 +504,7 @@ export async function route(deps, req, res) {
         layoutPreferences: article.layoutPreferences ?? null,
       }
       const { html, report } = await renderLayout(toMarkdown(article), {
-        ...settings, ...article.layoutPreferences, banner, followCard: studioOptions.followCard, studioOptions,
+        ...resolveLayoutPreferences(settings, article), banner, followCard: studioOptions.followCard, studioOptions,
       })
       return json(res, 200, { html, report })
     }
@@ -732,6 +734,13 @@ export async function route(deps, req, res) {
       await store.update(state => { mustFind(state, body.id).lastView = body.view })
       return ok()
     }
+    case 'svg-cards/draft':
+      return json(res, 200, await draftSvgCard(ctx, store, body))
+    case 'svg-cards/preview':
+      return json(res, 200, await previewSvgCard(store, body, await readSettings(store.root)))
+    case 'svg-cards/insert':
+      await insertSvgCard(store, body)
+      return ok()
     case 'schedule/set': {
       const at = scheduleTime(body.at)
       await store.update(state => {

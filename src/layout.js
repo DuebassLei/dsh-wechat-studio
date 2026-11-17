@@ -15,6 +15,14 @@ export const THEMES = ['orange', 'blue', 'teal', 'ink', 'navy', 'violet', 'rose'
 export const STYLE_NAMES = { std: '标准', mag: '杂志', min: '极简', geek: '极客', bold: '醒目', neo: '质感', note: '手账', zen: '雅致', bento: '卡片', dark: '暗夜' }
 export const THEME_NAMES = { orange: '品牌橙', blue: '科技蓝', teal: '薄荷绿', ink: '墨黑', navy: '藏青金', violet: '葡萄紫', rose: '胭脂红', amber: '琥珀', morandi: '莫兰迪', forest: '松柏金', petrol: '孔雀青', mist: '雾霾蓝', matcha: '橄榄绿', cocoa: '可可棕', dusty: '豆沙粉' }
 
+export function resolveLayoutPreferences(settings = {}, article = {}) {
+  const preferred = article.layoutPreferences ?? {}
+  return {
+    style: STYLES.includes(preferred.style) ? preferred.style : STYLES.includes(settings.style) ? settings.style : 'std',
+    theme: THEMES.includes(preferred.theme) ? preferred.theme : THEMES.includes(settings.theme) ? settings.theme : 'orange',
+  }
+}
+
 function run(file, args, { input, cwd } = {}) {
   return new Promise((resolve, reject) => {
     const child = execFile(file, args, { cwd, timeout: 60_000, maxBuffer: 32 * 1024 * 1024, env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONDONTWRITEBYTECODE: '1' } }, (err, stdout, stderr) => {
@@ -71,6 +79,62 @@ export async function renderLayout(markdown, { style, theme, banner, followCard 
  * @param {string[]} [fixedLines] - 含有这些文字的行整行去掉。
  * @returns {Promise<string>} 纯文本。
  */
+const SVG_CARD_KINDS = ['svg-table', 'svg-bars', 'svg-steps', 'svg-timeline', 'svg-breakdown', 'svg-compare', 'svg-concept', 'svg-phone']
+const SVG_ELEMENTS = new Set(['section', 'svg', 'g', 'rect', 'circle', 'line', 'path', 'text', 'animate', 'animateTransform', 'set'])
+const SVG_ATTRIBUTES = new Set([
+  'xmlns', 'viewBox', 'width', 'height', 'style', 'opacity', 'x', 'y', 'rx', 'ry', 'fill', 'stroke',
+  'stroke-width', 'stroke-dasharray', 'stroke-dashoffset', 'stroke-linecap', 'stroke-linejoin', 'font-size',
+  'font-weight', 'font-family', 'text-anchor', 'cx', 'cy', 'r', 'x1', 'x2', 'y1', 'y2', 'd', 'transform',
+  'attributeName', 'values', 'keyTimes', 'calcMode', 'keySplines', 'dur', 'repeatCount', 'begin', 'from', 'to', 'type', 'by',
+])
+
+export function assertSvgCardFragment(html) {
+  const source = String(html ?? '')
+  if (!source || source.length > 500_000 || (source.match(/<svg\b/g) ?? []).length !== 1 || (source.match(/<\/svg>/g) ?? []).length !== 1) {
+    throw Object.assign(new Error('单卡渲染没有返回唯一 SVG。'), { status: 422 })
+  }
+  if (/<(?:script|style|foreignObject|iframe|image|use|clipPath)\b|Gradient|\son\w+\s*=|(?:href|src)\s*=|url\s*\(|@import/i.test(source)) {
+    throw Object.assign(new Error('单卡渲染包含脚本、外部引用或不支持的元素。'), { status: 422 })
+  }
+  for (const match of source.matchAll(/<\/?([A-Za-z][\w-]*)[^>]*>/g)) {
+    const [tag, element] = match
+    if (!SVG_ELEMENTS.has(element)) throw Object.assign(new Error(`单卡渲染包含不支持的元素：${element}`), { status: 422 })
+    for (const attr of tag.matchAll(/([A-Za-z_:][\w:.-]*)\s*=/g)) {
+      if (!SVG_ATTRIBUTES.has(attr[1])) throw Object.assign(new Error(`单卡渲染包含不支持的属性：${attr[1]}`), { status: 422 })
+    }
+  }
+  if (!/<(?:animate|animateTransform|set)\b/.test(source)) {
+    throw Object.assign(new Error('卡片格式无法渲染成动画，请检查条目和分隔符。'), { status: 422 })
+  }
+  return source
+}
+
+export async function renderSvgCard(card, { style = 'std', theme = 'orange' } = {}) {
+  if (!SVG_CARD_KINDS.includes(card?.kind) || typeof card.title !== 'string' || !Array.isArray(card.lines) || card.lines.some(line => typeof line !== 'string')) {
+    throw Object.assign(new Error('卡片类型或内容格式无效。'), { status: 400 })
+  }
+  const safeStyle = STYLES.includes(style) ? style : 'std'
+  const safeTheme = THEMES.includes(theme) ? theme : 'orange'
+  const code = [
+    'import sys, json',
+    'sys.path.insert(0, sys.argv[1])',
+    'import layout as L',
+    'data = json.load(sys.stdin)',
+    'style = data["style"]',
+    'theme = data["theme"]',
+    'T = dict(L.THEMES[theme], st=style, r=L.STYLES[style]["r"])',
+    'html = L.svg_card(data["kind"], data["title"], data["lines"], T)',
+    'sys.stdout.write(json.dumps({"html": html, "warnings": L.WARN}, ensure_ascii=False))',
+  ].join('\n')
+  const input = JSON.stringify({ kind: card.kind, title: card.title, lines: card.lines, style: safeStyle, theme: safeTheme })
+  const { stdout } = await python(['-c', code, VENDOR], { input })
+  const result = JSON.parse(stdout)
+  if (!String(result.html).includes('<svg')) {
+    throw Object.assign(new Error(`卡片格式无法渲染：${result.warnings.join('；') || '请检查条目和分隔符'}`), { status: 422 })
+  }
+  return { html: assertSvgCardFragment(result.html), report: result.warnings.join('\n') }
+}
+
 export async function detectionText(markdown, fixedLines = []) {
   const code = 'import sys\nsys.path.insert(0, sys.argv[1])\nimport layout\nsys.stdout.write(layout.plain_md(sys.stdin.read()))'
   const body = String(markdown).replace(/\r\n?/g, '\n').replace(/^---\n[\s\S]*?\n---\n?/, '')

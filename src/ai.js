@@ -10,6 +10,7 @@ const SESSION_ID = `dsh-wechat-studio-${randomUUID()}`
 export const SKILL_NAMES = ['writer', 'headline', 'humanizer', 'zhuque', 'banner']
 export const COVER_SKILL_DIR = join(BUNDLED, 'linyuebanzi-cover-banner')
 export const INLINE_DIAGRAM_SKILL_DIR = join(BUNDLED, 'linyuebanzi-inline-diagram')
+export const SVG_CARDS_SKILL_DIR = join(BUNDLED, 'wechat-svg-cards')
 
 /** 最近一次模型调用的结果。选了模型不等于能用，比如还没配密钥。 */
 export const modelStatus = { ok: null, error: null }
@@ -42,8 +43,12 @@ export async function skillSources(overrideDir) {
     name: 'inline-diagram', file: 'SKILL.md',
     sources: [[overrideDir ? join(overrideDir, 'linyuebanzi-inline-diagram') : null, 'user'], [INLINE_DIAGRAM_SKILL_DIR, 'bundled']],
   })
+  entries.push({
+    name: 'wechat-svg-cards', file: 'SKILL.md',
+    sources: [[overrideDir ? join(overrideDir, 'wechat-svg-cards') : null, 'user'], [SVG_CARDS_SKILL_DIR, 'bundled']],
+  })
   return Promise.all(entries.map(async ({ name, file, sources }) => {
-    const displayPath = name === 'cover' ? `linyuebanzi-cover-banner/${file}` : name === 'inline-diagram' ? `linyuebanzi-inline-diagram/${file}` : file
+    const displayPath = name === 'cover' ? `linyuebanzi-cover-banner/${file}` : name === 'inline-diagram' ? `linyuebanzi-inline-diagram/${file}` : name === 'wechat-svg-cards' ? `wechat-svg-cards/${file}` : file
     for (const [dir, source] of sources) {
       if (!dir) continue
       const path = join(dir, file)

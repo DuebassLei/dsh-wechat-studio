@@ -39,18 +39,6 @@ Surrounding elements (connected to center with inward-pointing arrows):
 {{可选:right side emphasis callout box}}:
 "{{关键要点,如 为什么是物理隔离? 1.一个挂了其他照常 2.互不依赖}}"
 
-If the selected style is `executive-tech`:
-- Prefer either:
-  - one processed portrait/object as the main visual with 4-5 orbiting concept cards, or
-  - one editorial collage with a few UI cards and sparse annotations
-- If the concept article is inherently multi-signal or dashboard-like, a controlled dense board is allowed, but it still needs:
-  - one huge headline anchor
-  - one human/object visual anchor
-  - 2-3 clearly grouped information zones
-- Each surrounding card should express one concept only
-- Keep connector lines subtle; the page should feel premium and spacious
-- Avoid turning the concept map into a crowded dashboard
-
 Bottom summary text: "{{一句话金句,如 用进程隔离打造真实的多 Agent 协作基础}}"
 
 {{脚本会自动在提示词开头注入所选风格前缀;这里不要手写固定 Style 段落}}
@@ -82,14 +70,6 @@ Center of the loop: {{中心图标,如 upward spiral / target / gear}} with text
 Linear flow from left to right with {{N}} nodes:
 Step 1: "{{节点1}}" → Step 2: "{{节点2}}" → Step 3: "{{节点3}}" → Final: "{{最终结果}}"
 Each step has a short annotation below in smaller text.
-
-If the selected style is `executive-tech`:
-- Prefer 4-5 large horizontal step cards instead of dense nested modules
-- Each step card should have only one short title + one short sentence
-- Use one strong page headline and one short takeaway, not many side notes
-- Optional supporting UI/chart elements should stay minimal and secondary
-- Keep generous whitespace; avoid KPI/dashboard overload unless the article truly needs it
-- If the content is really about operational status or multi-layer execution, one grouped side dashboard zone is allowed, but the step flow must remain the first reading path
 
 Right side emphasis callout: "{{关键警告或要点}}"
 
@@ -128,13 +108,6 @@ Right side: "{{B 方案名}}"
 - Small label: "{{B 的标签,如 慢但有状态}}"
 
 Bottom: small table or highlighted text comparing key metrics.
-
-If the selected style is `executive-tech`:
-- Do not force a rigid fifty-fifty split if the content reads better as asymmetric cards
-- For metric-oriented comparison, prefer a hero statement plus 3-5 clean KPI/comparison cards
-- If both sides are rich with metrics or state modules, use a controlled dense board with grouped sections instead of scattering many tiny cards
-- For conceptual comparison, use two grouped card clusters with one bridging image/object or one subtle shared axis
-- Keep charts and labels selective; the contrast should be obvious at a glance
 
 Emphasis callout box (bottom right or as an aside): "{{核心洞察,如 追求速度用 A,追求灵魂用 B}}"
 
@@ -176,13 +149,6 @@ Annotations next to each layer (small text):
 - "{{层 2 的职责}}"
 - "{{层 3 的职责}}"
 
-If the selected style is `executive-tech`:
-- Prefer a modular system board or stacked bento panels instead of plain hierarchical boxes
-- Limit the number of primary modules so the core architecture stays legible
-- Use one dominant core layer plus supporting side modules, not too many equal-weight boxes
-- Optional supporting metric, note, or processed image area may be added to soften the layout
-- If the architecture article also needs live indicators, role panels, and support modules, use 2-3 grouped zones rather than one uniform wall of cards
-
 Right side emphasis callout: "{{关键设计原则,如 身份隔离,职责单一}}"
 
 Bottom summary text: "{{架构一句话,如 分层不混岗,协作才清爽}}"
@@ -218,5 +184,4 @@ Bottom summary text: "{{架构一句话,如 分层不混岗,协作才清爽}}"
    - 正向信息用正向标记
    - 警告/重点用强调 callout
    - 流程箭头和层级关系要清楚
-   - `executive-tech` 可以在同一视觉语言下切换 orbital / workflow / KPI / modular stack / editorial collage / dense insight board 等不同版式原型,但不能同时把所有原型堆到一张图里
 5. **禁忌**:no photographs / no 3D / no gradients / no shadows(具体约束以所选 style 文件为准)

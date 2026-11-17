@@ -114,7 +114,6 @@ Do not use: card borders or outlines, photographs, photorealistic or 3D rendered
 
 | 风格 | 区别 |
 |---|---|
-| `executive-tech` | 那个是深靛紫主色 + 杂志化大标题 + 双色调人物，偏咨询报告；`saas-flat` 是多色粉彩卡片 + 可爱机器人图标 + 语义化彩色箭头，偏产品官网 |
 | `infographic` | 那个是米白底 + 深褐红标题 + 蓝橙双色；`saas-flat` 是纯白底 + 多色淡彩卡片 + 黑色圆形编号 |
 | `cartoon-infographic` | 那个是暖奶油底 + 手绘线条；`saas-flat` 是纯白底 + 干净矢量 |
 

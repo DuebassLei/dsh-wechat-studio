@@ -1,22 +1,16 @@
 # 林月半子技术长文插图生成器
 
-把一篇 3000~8000 字的技术长文,自动加上 4-5 张 16:9 概念图、流程图、对比图、架构图。支持**四种风格**:
+把一篇 3000~8000 字的技术长文,自动加上 4-5 张 16:9 概念图、流程图、对比图、架构图。支持**七种风格**:
 
 - **notebook** · 手绘笔记本风: 黑墨水主笔 + 绿正向 + 红强调,网格纸背景
 - **infographic** · 专业信息图风: 米白底 + 深褐红标题 + 蓝/橙双色
-- **executive-tech** · 现代高级科技商务风: 米白留白底 + 深靛紫主色 + 卡片式 UI + 仪表盘图表 + 杂志化大标题 + 半调双色调人物/物体
 - **cozy-handdrawn** · 温暖手绘卡片风: 米白纸感底 + 黑色手绘线条 + 粉彩圆角卡片 + 轻漫画式信息图布局 + LQ 个人动画形象辅助叙事
+- **tech-doodle** · 技术简笔画风: 暖白奶油底 + 墨线笔触 + 极淡粉彩 + 极简火柴人 + 荧光笔金句
+- **cartoon-infographic** · 卡通信息图风: 干净白底 + 手绘圆角容器 + 功能性柔和多色 + 可选 LQ 卡通形象
+- **whiteboard-sketch** · 白板手绘风: 暖奶油底 + 马克笔线条 + 柔和粉彩容器 + 教育图示布局
 - **saas-flat** · SaaS 产品扁平风: 纯白底 + 极淡粉彩圆角卡片 + 黑色圆形步骤编号 + 蓝色机器人图标 + 语义化彩色箭头(成功绿 / 回环粉 / 数据流紫蓝)+ 超大彩色数字指标
 
-如果用户没有明确指定风格，必须先询问是 `notebook`、`infographic`、`executive-tech` 还是 `cozy-handdrawn`，不要直接按默认风格生成。
-
-其中 `executive-tech` 不是固定只出一种流程图模板，而是在同一视觉语言下支持多种版式原型:
-
-- `Hero + Orbital Cards`：适合角色变化、抽象概念、认知迁移
-- `Hero + 5 Step Workflow`：适合流程、闭环、方法步骤
-- `Hero + KPI Row`：适合指标、结果、成熟度判断
-- `Hero + Modular System Stack`：适合架构、分层、系统方法论
-- `Hero + Editorial Desk Collage`：适合品牌化叙事、人机协同、咨询式表达
+如果用户没有明确指定风格，必须先询问是 `notebook`、`infographic`、`cozy-handdrawn`、`tech-doodle`、`cartoon-infographic`、`whiteboard-sketch` 还是 `saas-flat`，不要直接按默认风格生成。
 
 ## 这个 skill 干嘛用的
 
@@ -47,7 +41,6 @@ linyuebanzi-inline-diagram/
     ├── styles/
     │   ├── notebook.md              # 手绘笔记本风风格定义
     │   ├── infographic.md           # 专业信息图风风格定义
-    │   ├── executive-tech.md        # 现代高级科技商务风风格定义
     │   ├── cozy-handdrawn.md        # 温暖手绘卡片风风格定义
     │   └── saas-flat.md             # SaaS 产品扁平风风格定义
     ├── analysis-contract.md          # 应用内建议分析的 JSON 输出契约
@@ -125,13 +118,12 @@ python3 linyuebanzi-image-gen/scripts/generate.py \
 - 不满意某张图效果，想单独重做而不触发整批
 - 想保留同一张图的内容结构，但切到另一种风格重跑
 
-## 四种风格对比
+## 风格对比
 
 | 风格 | 适用场景 | 视觉特点 |
 |---|---|---|
 | **notebook** | 技术教程、工程师向、个人博客 | 黑墨水主笔 + 绿正向 + 红强调,网格纸背景,手绘感 |
 | **infographic** | 商业演示、对比分析、品牌内容 | 米白底 + 深褐红标题,蓝/橙双色,扁平专业感 |
-| **executive-tech** | AI 产品方案、商业洞察、咨询式表达、品牌化技术内容 | 深靛紫主色 + 便当盒卡片布局 + 仪表盘图表 + 杂志化标题 + 半调双色调人物/物体 |
 | **cozy-handdrawn** | 中文技术长文、概念解释、流程拆解、公众号教程配图 | 米白纸感底 + 黑色手绘线条 + 粉彩圆角卡片 + 轻漫画式信息图 + LQ 动画形象辅助叙事 |
 | **saas-flat** | AI 工程化实践、研发运维流程、MCP/Agent 调用链、效率复盘 | 纯白底 + 淡彩圆角卡片 + 黑圆编号 + 蓝色机器人图标 + 语义化彩色箭头 + 大号彩色数字 |
 
@@ -165,7 +157,7 @@ diagrams/20260421-143000/
 |---|---|---|
 | aspect_ratio | `16:9` | 适合插在文章中段 |
 | resolution | `2K` | 够清晰,不至于太大 |
-| 风格 | `notebook` / `infographic` / `executive-tech` | 由 `--style` 决定 |
+| 风格 | `notebook` / `infographic` / `cozy-handdrawn` / `tech-doodle` / `cartoon-infographic` / `whiteboard-sketch` / `saas-flat` | 由 `--style` 决定 |
 | 并发 | 串行(默认) / `--parallel` | 默认更稳,需要提速时可切并行 |
 
 ## 环境变量

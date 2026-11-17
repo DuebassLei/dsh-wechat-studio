@@ -204,9 +204,10 @@ test('插图资产原样保存为 UUID PNG，拒绝跨稿读取', async () => {
 
 test('风格从目录式 skill 动态加载，用户可增加和覆盖风格', async () => {
   const bundled = await listInlineStyles()
-  for (const id of ['notebook', 'infographic', 'whiteboard-sketch', 'executive-tech', 'cozy-handdrawn', 'tech-doodle', 'cartoon-infographic', 'saas-flat']) {
+  for (const id of ['notebook', 'infographic', 'whiteboard-sketch', 'cozy-handdrawn', 'tech-doodle', 'cartoon-infographic', 'saas-flat']) {
     assert.ok(bundled.some(style => style.id === id), id)
   }
+  assert.ok(!bundled.some(style => style.id === 'executive-tech'))
   const root = mkdtempSync(join(tmpdir(), 'ws-inline-skill-'))
   const skillsDir = join(root, 'skills')
   const customDir = join(skillsDir, 'linyuebanzi-inline-diagram', 'references', 'styles')

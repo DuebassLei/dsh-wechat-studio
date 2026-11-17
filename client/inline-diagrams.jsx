@@ -3,7 +3,6 @@ import { COVER_PROVIDERS, modelsFor } from '../src/cover-options.js'
 import notebookPreview from './assets/inline-styles/notebook.webp'
 import infographicPreview from './assets/inline-styles/infographic.webp'
 import whiteboardPreview from './assets/inline-styles/whiteboard-sketch.webp'
-import executivePreview from './assets/inline-styles/executive-tech.webp'
 import cozyPreview from './assets/inline-styles/cozy-handdrawn.webp'
 import doodlePreview from './assets/inline-styles/tech-doodle.webp'
 import cartoonPreview from './assets/inline-styles/cartoon-infographic.webp'
@@ -14,7 +13,6 @@ const INLINE_STYLE_PREVIEWS = {
   notebook: notebookPreview,
   infographic: infographicPreview,
   'whiteboard-sketch': whiteboardPreview,
-  'executive-tech': executivePreview,
   'cozy-handdrawn': cozyPreview,
   'tech-doodle': doodlePreview,
   'cartoon-infographic': cartoonPreview,

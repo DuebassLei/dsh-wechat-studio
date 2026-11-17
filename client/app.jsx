@@ -1364,7 +1364,7 @@ function ReimportDialog({ article }) {
             {plan.removedMedia.length ? (
               <div className="ws-reimport-media">
                 <b>以下内容将从正文移出：</b>
-                <ul>{plan.removedMedia.map(item => <li key={item.blockId}>{item.kind === 'image' ? `图片：${item.caption || '无图注'}` : `动画卡：${item.title}`}（旧第 {item.number} 块）</li>)}</ul>
+                <ul>{plan.removedMedia.map(item => <li key={`${item.blockId}:${item.occurrence ?? 0}`}>{item.kind === 'image' ? `图片：${item.caption || '无图注'}` : `动画卡：${item.title}`}（旧第 {item.number} 块）</li>)}</ul>
                 <label className="ws-reimport-acknowledge">
                   <input type="checkbox" checked={acknowledgeRemovedMedia} disabled={locked} onChange={event => setAcknowledgeRemovedMedia(event.target.checked)} />
                   <span>我确认这些图片和动画卡将从正文移出，可撤销</span>

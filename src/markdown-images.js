@@ -13,8 +13,15 @@ function isFeishuImage(value) {
 
 function imageMatches(markdown) {
   // Keep code examples untouched; only replace inline Markdown image destinations.
-  const pattern = /^ {0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*?(?:^ {0,3}\1[\x60~]*[ \t]*\r?$|(?![\s\S]))|(`+)[^\n]*?\2|\\[^\n]|(!\[[^\]\n]*\]\(<?)([^\s>)]+)(>?(?:[ \t]+"[^"\n]*")?\))/gm
+  const pattern = /^ {0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*?(?:^ {0,3}\1[\x60~]*[ \t]*\r?$|(?![\s\S]))|(`+)[^\n]*?\2|\\[^\n]|(!\[(?:\\.|[^\]\\])*\]\(<?)([^\s>)]+)(>?(?:[ \t]+"[^"\n]*")?\))/gm
   return [...markdown.matchAll(pattern)].filter(match => match[4])
+}
+
+export function markdownImageDestinations(text) {
+  return imageMatches(String(text ?? '')).map(match => ({
+    src: match[4],
+    caption: match[3].slice(2, match[3].lastIndexOf('](')).replace(/\\([\\\[\]])/g, '$1'),
+  }))
 }
 
 export function feishuImageUrls(blocks) {

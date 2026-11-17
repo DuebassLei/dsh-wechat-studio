@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
-import { newId, parseMarkdownImage, snapshot, splitMarkdown, touch } from './article.js'
-import { feishuImageUrls } from './markdown-images.js'
+import { newId, snapshot, splitMarkdown, touch } from './article.js'
+import { feishuImageUrls, markdownImageDestinations } from './markdown-images.js'
 import { parseSvgCardBlock } from './svg-cards.js'
 
 const fail = message => Object.assign(new Error(message), { status: 400 })
@@ -23,14 +23,11 @@ function svgMedia(text, number, blockId) {
 }
 
 function mediaAt(text, number, blockId) {
-  const image = parseMarkdownImage(text)
-  if (image) {
-    return {
-      key: `image:${image.src}`,
-      item: { kind: 'image', blockId, number, caption: image.caption, src: image.src },
-    }
-  }
-  return isSvg(text) ? svgMedia(text, number, blockId) : null
+  if (isSvg(text)) return [svgMedia(text, number, blockId)]
+  return markdownImageDestinations(text).map((image, occurrence) => ({
+    key: `image:${image.src}`,
+    item: { kind: 'image', blockId, number, caption: image.caption, src: image.src, occurrence },
+  }))
 }
 
 export function planMarkdownReimport(article, markdown, { updateTitle = false } = {}) {
@@ -59,16 +56,17 @@ export function planMarkdownReimport(article, markdown, { updateTitle = false } 
 
   const incomingMedia = new Map()
   parsed.blocks.forEach((text, index) => {
-    const media = mediaAt(text, index + 1)
-    if (media) incomingMedia.set(media.key, (incomingMedia.get(media.key) ?? 0) + 1)
+    for (const media of mediaAt(text, index + 1)) {
+      incomingMedia.set(media.key, (incomingMedia.get(media.key) ?? 0) + 1)
+    }
   })
   const removedMedia = []
   article.blocks.forEach((block, index) => {
-    const media = mediaAt(block.text, index + 1, block.id)
-    if (!media) return
-    const remaining = incomingMedia.get(media.key) ?? 0
-    if (remaining > 0) incomingMedia.set(media.key, remaining - 1)
-    else removedMedia.push(media.item)
+    for (const media of mediaAt(block.text, index + 1, block.id)) {
+      const remaining = incomingMedia.get(media.key) ?? 0
+      if (remaining > 0) incomingMedia.set(media.key, remaining - 1)
+      else removedMedia.push(media.item)
+    }
   })
 
   const finalTitle = updateTitle ? parsed.title : article.title

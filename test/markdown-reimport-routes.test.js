@@ -268,3 +268,15 @@ test('正文插图移出后建议不再显示已插入，撤销后恢复原插�
   assert.equal(undone.body.current.inlineDiagrams[0].status, 'inserted')
   assert.equal(undone.body.current.inlineDiagrams[0].insertedBlockExists, true)
 })
+
+test('行内图片移出未确认时返回 409，正文保持不变', async () => {
+  const url = 'https://example.com/a.png'
+  const { article, request } = await setup({ markdown: `# 标题\n\n图例：![图一](${url}) 和 ![图二](${url})` })
+  const markdown = `# 标题\n\n图例：![仍保留一张](${url})`
+  const plan = await preview(request, article, markdown)
+  assert.equal(plan.removedMedia.length, 1)
+  const response = await request('articles/reimport', { id: article.id, markdown, token: plan.token })
+  assert.equal(response.status, 409)
+  assert.match(response.body.error, /确认/)
+  assert.equal(article.blocks[0].text, `图例：![图一](${url}) 和 ![图二](${url})`)
+})

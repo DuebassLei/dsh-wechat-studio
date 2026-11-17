@@ -108,3 +108,22 @@ test('新稿无效动画卡报告正文块序号和具体校验错误', () => {
     /第 2 块.*3–5 行/,
   )
 })
+
+test('行内图片按每次出现计数，同 URL 多图只报告实际移出的数量', () => {
+  const url = 'https://example.com/a.png'
+  const article = createArticle({ markdown: `图例：![图一](${url}) 和 ![图二](${url})` })
+  const plan = planMarkdownReimport(article, `图例：![仍保留一张](${url})`)
+  assert.equal(plan.removedMedia.length, 1)
+  assert.equal(plan.removedMedia[0].src, url)
+  assert.equal(plan.removedMedia[0].occurrence, 1)
+  const kept = planMarkdownReimport(article, `图例：![新图注](${url}) 和 ![另一张](${url})`)
+  assert.deepEqual(kept.removedMedia, [])
+})
+
+test('行内图片支持转义右括号图注，围栏代码示例不算正文图片', () => {
+  const url = 'https://example.com/a.png'
+  const article = createArticle({ markdown: `正文 ![图\\]注](${url})\n\n\`\`\`md\n![代码示例](${url})\n\`\`\`` })
+  const plan = planMarkdownReimport(article, '没有图片')
+  assert.equal(plan.removedMedia.length, 1)
+  assert.equal(plan.removedMedia[0].caption, '图]注')
+})

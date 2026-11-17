@@ -12,11 +12,26 @@
     "./package.json": "./package.json"
   },
   "dsh": {
-    "bundle": { "patch": "./cordis.patch.yml" },
-    "client": { "platform": "web", "inject": ["@deepseek-ai/dsh-client-runtime"] }
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime"
+      ]
+    }
   },
-  "engines": { "node": ">=20", "dsh": ">=0.2.1-rc.5 <0.3.0" },
-  "keywords": ["dsh", "deepseek-harness", "dsh-plugin", "wechat"],
+  "engines": {
+    "node": ">=20",
+    "dsh": ">=0.2.1-rc.5 <0.3.0"
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "dsh-plugin",
+    "wechat"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/lqshow/dsh-wechat-studio.git"
@@ -33,9 +48,20 @@
   },
   "devDependencies": {
     "esbuild": "^0.25.10",
+    "jpeg-js": "^0.4.4",
+    "pngjs": "^7.0.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "unpdf": "^1.4.0"
   },
-  "files": ["src", "dist", "skills", "vendor", "icon.svg", "cordis.patch.yml", "README.md", "LICENSE"]
+  "files": [
+    "src",
+    "dist",
+    "skills",
+    "vendor",
+    "icon.svg",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ]
 }

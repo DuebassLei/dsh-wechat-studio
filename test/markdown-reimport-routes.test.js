@@ -343,3 +343,11 @@ test('第二次覆盖的转存不会改写最近一次覆盖前的快照', async
   assert.equal(article.history[0].blocks[1].text, '![旧图](https://example.com/old.png)')
   assert.equal(article.history[1].blocks[0].text, `![飞书图](${FEISHU})`)
 })
+
+test('仅更新标题且正文不变时预检不报告飞书转存', async () => {
+  const { article, request } = await setup({ markdown: `# 旧标题\n\n![飞书图](${FEISHU})` })
+  const markdown = `# 新标题\n\n![飞书图](${FEISHU})`
+  const plan = await preview(request, article, markdown, true)
+  assert.equal(plan.bodyChanged, false)
+  assert.equal(plan.transfers, 0)
+})

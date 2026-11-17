@@ -79,14 +79,13 @@ export function planMarkdownReimport(article, markdown, { updateTitle = false } 
   ])
   return {
     token, title: article.title, finalTitle, incomingTitle: parsed.title,
-    changed, kept, removed: article.blocks.length - kept, added: entries.length - kept,
+    changed, bodyChanged: !sameBody, kept, removed: article.blocks.length - kept, added: entries.length - kept,
     entries, removedMedia,
   }
 }
 
 export function applyMarkdownReimport(article, plan) {
-  const bodyChanged = plan.entries.length !== article.blocks.length
-    || plan.entries.some((entry, index) => entry.text !== article.blocks[index].text)
+  const bodyChanged = plan.bodyChanged
   snapshot(article, '重新导入 Markdown')
   article.history.at(-1).reimportBefore = {
     summary: structuredClone(article.summary),

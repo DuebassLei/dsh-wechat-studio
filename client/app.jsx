@@ -1190,11 +1190,14 @@ export function NewDialog() {
   const [material, setMaterial] = React.useState('')
   const [markdown, setMarkdown] = React.useState('')
   const [busy, setBusy] = React.useState(false)
-  const locked = busy
+  const [reading, setReading] = React.useState(false)
+  const readingRef = React.useRef(false)
+  const handleReadingChange = value => { readingRef.current = value; setReading(value) }
+  const locked = busy || reading
   const close = () => { if (!locked) setState({ dialog: null }) }
   const submit = async event => {
     event.preventDefault()
-    if (locked) return
+    if (busy || readingRef.current) return
     setBusy(true)
     const ok = await act('articles/new', tab === 'paste' ? { markdown } : { topic, material })
     setBusy(false)
@@ -1211,7 +1214,7 @@ export function NewDialog() {
           <button type="button" className="ws-icon-btn" aria-label="关闭" onClick={close}><Icon name="close" /></button>
         </div>
         {tab === 'paste' ? (
-          <MarkdownImportFields Icon={Icon} value={markdown} onChange={setMarkdown} locked={locked} />
+          <MarkdownImportFields Icon={Icon} value={markdown} onChange={setMarkdown} locked={locked} reading={reading} onReadingChange={handleReadingChange} />
         ) : (
           <>
             <label className="ws-field"><span>选题</span>
@@ -1239,12 +1242,15 @@ function ReimportDialog({ article }) {
   const [plan, setPlan] = React.useState(null)
   const [acknowledgeRemovedMedia, setAcknowledgeRemovedMedia] = React.useState(false)
   const [busy, setBusy] = React.useState('')
+  const [reading, setReading] = React.useState(false)
+  const readingRef = React.useRef(false)
   const [error, setError] = React.useState('')
   const sequence = React.useRef(0)
   const taskReason = article.publishedAt ? '已发布稿件不能覆盖正文。'
     : article.job || article.coverJob || article.inlineDiagramJob || article.imageImport?.total
       ? '请等当前任务完成后再重新导入。' : ''
-  const locked = Boolean(busy || taskReason)
+  const handleReadingChange = value => { readingRef.current = value; setReading(value) }
+  const locked = Boolean(busy || reading || taskReason)
   const incomingTitle = React.useMemo(() => markdown.trim() ? splitMarkdown(markdown).title : '', [markdown])
   React.useEffect(() => () => { sequence.current++ }, [])
   const close = () => {
@@ -1257,9 +1263,14 @@ function ReimportDialog({ article }) {
     setAcknowledgeRemovedMedia(false)
     setError('')
   }
-  const changeMarkdown = value => { invalidate(); setMarkdown(value) }
+  const changeMarkdown = value => {
+    invalidate()
+    setUpdateTitle(false)
+    setMarkdown(value)
+  }
   const changeUpdateTitle = value => { invalidate(); setUpdateTitle(value) }
   const checkReady = () => {
+    if (readingRef.current) { setError('正在读取文件，请稍候。'); return false }
     if (taskReason) { setError(taskReason); return false }
     if (unsavedParagraphCount(article)) {
       setError('请先保存或丢弃未保存的段落，再重新导入。')
@@ -1295,7 +1306,7 @@ function ReimportDialog({ article }) {
   }
   const submit = async event => {
     event.preventDefault()
-    if (busy) return
+    if (busy || readingRef.current) return
     if (!plan) { await runPreview(); return }
     if (!plan.changed || !checkReady()) return
     if (plan.removedMedia.length && !acknowledgeRemovedMedia) {
@@ -1339,7 +1350,7 @@ function ReimportDialog({ article }) {
           </div>
           <button type="button" className="ws-icon-btn" aria-label="关闭" disabled={Boolean(busy)} onClick={close}><Icon name="close" /></button>
         </div>
-        <MarkdownImportFields Icon={Icon} value={markdown} onChange={changeMarkdown} locked={locked} />
+        <MarkdownImportFields Icon={Icon} value={markdown} onChange={changeMarkdown} locked={locked} reading={reading} onReadingChange={handleReadingChange} />
         <div className="ws-reimport-options">
           <p className="ws-muted ws-small">默认只替换正文；新文件的 front matter 不会写入稿件配置。文章 ID、封面、排期、排版配置和改稿聊天保留。</p>
           {incomingTitle && incomingTitle !== article.title ? (

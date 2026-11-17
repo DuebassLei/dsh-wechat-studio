@@ -2,8 +2,7 @@ import React from 'react'
 import { plainOf, splitMarkdown } from '../src/article.js'
 import { countMarkdownImages, feishuImageUrls } from '../src/markdown-images.js'
 
-export function MarkdownImportFields({ Icon, value, onChange, locked }) {
-  const [reading, setReading] = React.useState(false)
+export function MarkdownImportFields({ Icon, value, onChange, locked, reading, onReadingChange }) {
   const [dragging, setDragging] = React.useState(false)
   const [fileName, setFileName] = React.useState('')
   const [fileError, setFileError] = React.useState('')
@@ -22,7 +21,7 @@ export function MarkdownImportFields({ Icon, value, onChange, locked }) {
       return
     }
     setFileError('')
-    setReading(true)
+    onReadingChange(true)
     try {
       const text = await file.text()
       if (!text.trim()) {
@@ -34,7 +33,7 @@ export function MarkdownImportFields({ Icon, value, onChange, locked }) {
     } catch {
       setFileError('读取文件失败，请重新选择。')
     } finally {
-      setReading(false)
+      onReadingChange(false)
     }
   }
   const dragOver = event => {

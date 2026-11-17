@@ -687,8 +687,8 @@ export async function route(deps, req, res) {
       const plan = planMarkdownReimport(article, body.markdown, { updateTitle: body.updateTitle === true })
       return json(res, 200, {
         token: plan.token, currentTitle: article.title, incomingTitle: plan.incomingTitle, finalTitle: plan.finalTitle,
-        changed: plan.changed, kept: plan.kept, removed: plan.removed, added: plan.added,
-        removedMedia: plan.removedMedia, transfers: feishuImageUrls(plan.entries).length,
+        changed: plan.changed, bodyChanged: plan.bodyChanged, kept: plan.kept, removed: plan.removed, added: plan.added,
+        removedMedia: plan.removedMedia, transfers: plan.bodyChanged ? feishuImageUrls(plan.entries).length : 0,
         bannerReview: Boolean(article.banners?.[article.bannerStyle ?? DEFAULT_BANNER]),
       })
     }

@@ -72,7 +72,7 @@ dsh plugin --profile web add dsh-wechat-studio
 </tr>
 </table>
 
-需要 DeepSeek Harness `>=0.2.1-rc.5 <0.3.0`。排版需要 Python 3，使用 Python 标准库；封面裁切目前依赖 macOS 的 `sips`。终端里没有 `dsh` 时，可先在桌面版菜单中选择「管理 dsh 命令」。
+需要 DeepSeek Harness `>=0.2.1-rc.5 <0.3.0`。排版需要 Python 3，使用 Python 标准库；封面裁切为内置纯 JS 实现，Windows / macOS / Linux 均可用。终端里没有 `dsh` 时，可先在桌面版菜单中选择「管理 dsh 命令」。
 
 <details>
 <summary><strong>从源码安装、独立预览与卸载</strong></summary>

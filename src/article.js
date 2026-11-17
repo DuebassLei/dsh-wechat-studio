@@ -149,6 +149,8 @@ export function revisionChanges(article) {
     }
     const oldBlocks = new Map(before.blocks.map((block, i) => [block.id, { text: block.text, number: i + 1 }]))
     const newIds = new Set(after.blocks.map(block => block.id))
+    const oldRank = new Map(before.blocks.filter(block => newIds.has(block.id)).map((block, rank) => [block.id, rank]))
+    const newRank = new Map(after.blocks.filter(block => oldBlocks.has(block.id)).map((block, rank) => [block.id, rank]))
     let cursor = 0
     const deleted = block => rows.push({ kind: 'delete', before: oldBlocks.get(block.id), after: null })
     after.blocks.forEach((block, i) => {
@@ -162,6 +164,8 @@ export function revisionChanges(article) {
       }
       if (!old || old.text !== block.text) {
         rows.push({ kind: old ? 'rewrite' : 'insert', before: old ?? null, after: { text: block.text, number: i + 1 } })
+      } else if (oldRank.get(block.id) !== newRank.get(block.id)) {
+        rows.push({ kind: 'move', before: old, after: { text: block.text, number: i + 1 } })
       }
     })
     for (const block of before.blocks.slice(cursor)) {

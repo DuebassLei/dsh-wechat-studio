@@ -1701,7 +1701,7 @@ function SkillsView() {
   )
 }
 
-const revisionKinds = { title: '标题', rewrite: '改写', insert: '新增', delete: '删除' }
+const revisionKinds = { title: '标题', rewrite: '改写', insert: '新增', delete: '删除', move: '调整顺序' }
 
 function RevisionDialog({ article, blockId }) {
   const pending = useStudio(s => s.pending)

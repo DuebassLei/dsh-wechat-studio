@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { createArticle } from '../src/article.js'
-import { planMarkdownReimport } from '../src/markdown-reimport.js'
+import { createArticle, revisionChanges } from '../src/article.js'
+import { applyMarkdownReimport, planMarkdownReimport } from '../src/markdown-reimport.js'
 
 const CARD = '```svg-steps 审稿流程\n第一步 | 导入\n第二步 | 检查\n第三步 | 完成\n```'
 
@@ -126,4 +126,33 @@ test('行内图片支持转义右括号图注，围栏代码示例不算正文�
   const plan = planMarkdownReimport(article, '没有图片')
   assert.equal(plan.removedMedia.length, 1)
   assert.equal(plan.removedMedia[0].caption, '图]注')
+})
+
+function reimportRevision(article, markdown) {
+  applyMarkdownReimport(article, planMarkdownReimport(article, markdown))
+  return revisionChanges(article)[0]
+}
+
+test('只重排段落也产生改稿对比，前后段号正确', () => {
+  const article = createArticle({ markdown: '# 标题\n\n甲\n\n乙' })
+  const revision = reimportRevision(article, '# 标题\n\n乙\n\n甲')
+  assert.equal(revision.label, '重新导入 Markdown')
+  assert.deepEqual(revision.rows.map(row => [row.kind, row.before.number, row.after.number]), [
+    ['move', 2, 1], ['move', 1, 2],
+  ])
+})
+
+test('新增开头不会把后续共有段落误报为移动', () => {
+  const article = createArticle({ markdown: '# 标题\n\n甲\n\n乙' })
+  const revision = reimportRevision(article, '# 标题\n\n开场\n\n甲\n\n乙')
+  assert.deepEqual(revision.rows.map(row => row.kind), ['insert'])
+})
+
+test('重排可同时包含新增、删除和标题改动', () => {
+  const article = createArticle({ markdown: '# 旧标题\n\n甲\n\n乙\n\n丙' })
+  applyMarkdownReimport(article, planMarkdownReimport(article, '# 新标题\n\n丙\n\n新增\n\n甲', { updateTitle: true }))
+  const revision = revisionChanges(article)[0]
+  const counts = revision.rows.reduce((result, row) => ({ ...result, [row.kind]: (result[row.kind] ?? 0) + 1 }), {})
+  assert.deepEqual(counts, { title: 1, move: 2, insert: 1, delete: 1 })
+  assert.deepEqual(revision.rows.filter(row => row.kind === 'move').map(row => [row.before.number, row.after.number]), [[3, 1], [1, 3]])
 })

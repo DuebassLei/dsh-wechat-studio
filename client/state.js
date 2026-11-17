@@ -38,7 +38,11 @@ async function request(path, options) {
   } catch {
     // 不是 JSON 时按状态码报错
   }
-  if (!res.ok) throw new Error(body?.error || `请求失败（${res.status}）`)
+  if (!res.ok) {
+    const error = new Error(body?.error || `请求失败（${res.status}）`)
+    error.status = res.status
+    throw error
+  }
   return body
 }
 
@@ -59,6 +63,16 @@ function accept(data) {
   setState({ data, error: null, layout })
   clearTimeout(timer)
   if (current?.job || current?.coverJob || current?.inlineDiagramJob || current?.imageImport?.total) timer = setTimeout(refresh, 900)
+}
+
+export function previewMarkdownReimport(body) {
+  return postJson('articles/reimport/preview', body)
+}
+
+export async function reimportMarkdown(body) {
+  const data = await postJson('articles/reimport', body)
+  accept(data)
+  return data
 }
 
 export async function refresh() {

@@ -358,6 +358,7 @@ function view(article, pipeline, store, inlineStyles = [], inlineStyleWarnings =
   }
   return {
     id: article.id, topic: article.topic, title: article.title, titles: article.titles, summary: article.summary,
+    publishedAt: article.publishedAt ?? null,
     blocks: article.blocks.map(block => ({
       id: block.id, text: block.text, kind: blockKind(block.text), checkable: isCheckable(block.text), check: block.check,
       hasPrev: Boolean(block.prev), previousText: previousText.get(block.id) ?? (block.prev !== block.text ? block.prev ?? null : null),

@@ -1,5 +1,4 @@
 import { blockKind, parseMarkdownImage, plainOf, splitMarkdown } from '../src/article.js'
-import { countMarkdownImages, feishuImageUrls } from '../src/markdown-images.js'
 import magentaPreview from './assets/cover-styles/magenta.webp'
 import { COVER_PROVIDERS, modelsFor, providerFormats, COVER_RESOLUTIONS, MAX_COVER_COUNT } from '../src/cover-options.js'
 import classicPreview from './assets/cover-styles/classic.webp'
@@ -12,9 +11,10 @@ import { COVER_STYLES } from '../src/cover-styles.js'
 // 稿面：左边对话改稿，中间是稿子和纸边批注，右边是标题、朱雀质检和导出。
 import React from 'react'
 import { cardMarkdown, emphasisFormats, formatSelection, insertFormats } from './editor-format.js'
-import { act, copyDetectionText, copyMarkdown, copyText, countCurrentParagraphDrafts, getState, loadLayout, loadModels, loadRevisions, loadSettings, loadSkills, rememberArticleView, saveSettings, setState, testZhuque, toast, uploadReport, useStudio } from './state.js'
+import { act, copyDetectionText, copyMarkdown, copyText, countCurrentParagraphDrafts, getState, loadLayout, loadModels, loadRevisions, loadSettings, loadSkills, previewMarkdownReimport, reimportMarkdown, rememberArticleView, saveSettings, setState, testZhuque, toast, uploadReport, useStudio } from './state.js'
 import { InsightsView } from './insights.jsx'
 import { InlineDiagramDialog, InlineDiagramPane } from './inline-diagrams.jsx'
+import { MarkdownImportFields } from './markdown-import.jsx'
 import { ScheduleView } from './schedule.jsx'
 import { isSvgCardText, SvgCardBlock, SvgCardsPane } from './svg-cards.jsx'
 
@@ -970,6 +970,16 @@ function ArticleInfoPane({ article }) {
   const busy = Boolean(article.job)
   const generating = article.job?.kind === 'titles'
   const [showTitles, setShowTitles] = React.useState(false)
+  const reimportReason = article.publishedAt ? '已发布稿件不能覆盖正文。'
+    : article.job || article.coverJob || article.inlineDiagramJob || article.imageImport?.total
+      ? '请等当前任务完成后再重新导入。' : ''
+  const openReimport = () => {
+    if (unsavedParagraphCount(article)) {
+      toast('请先保存或丢弃未保存的段落，再重新导入。', true)
+      return
+    }
+    setState({ dialog: 'reimport', reimportArticleId: article.id })
+  }
   return <section className="ws-sec">
     <div className="ws-sec-head">
       <h2 className="ws-pane-title">当前标题</h2>
@@ -999,6 +1009,7 @@ function ArticleInfoPane({ article }) {
     <details className="ws-manual">
       <summary>更多操作</summary>
       <button type="button" className="ws-btn" disabled={!article.blocks.length} onClick={copyMarkdown}>复制 Markdown</button>
+      <button type="button" className="ws-btn" disabled={!article.blocks.length || Boolean(reimportReason)} title={reimportReason || undefined} onClick={openReimport}>重新导入 Markdown</button>
     </details>
   </section>
 }
@@ -1179,61 +1190,7 @@ export function NewDialog() {
   const [material, setMaterial] = React.useState('')
   const [markdown, setMarkdown] = React.useState('')
   const [busy, setBusy] = React.useState(false)
-  const [reading, setReading] = React.useState(false)
-  const [dragging, setDragging] = React.useState(false)
-  const [fileName, setFileName] = React.useState('')
-  const [fileError, setFileError] = React.useState('')
-  const fileInput = React.useRef(null)
-  const locked = busy || reading
-  const readFiles = async files => {
-    if (locked || !files.length) return
-    if (files.length !== 1 || !/\.(md|markdown)$/i.test(files[0].name)) {
-      setFileError('请选择一个 .md 或 .markdown 文件。')
-      return
-    }
-    const file = files[0]
-    if (file.size >= 2_000_000) {
-      setFileError('文件过大，请拆成较小的 Markdown 文件后再导入。')
-      return
-    }
-    setFileError('')
-    setReading(true)
-    try {
-      const text = await file.text()
-      if (!text.trim()) {
-        setFileError('这个 Markdown 文件没有内容。')
-        return
-      }
-      setMarkdown(text)
-      setFileName(file.name)
-    } catch {
-      setFileError('读取文件失败，请重新选择。')
-    } finally {
-      setReading(false)
-    }
-  }
-  const dragOver = event => {
-    if (!event.dataTransfer.types.includes('Files')) return
-    event.preventDefault()
-    event.dataTransfer.dropEffect = locked ? 'none' : 'copy'
-    if (!locked) setDragging(true)
-  }
-  const drop = event => {
-    if (!event.dataTransfer.types.includes('Files')) return
-    event.preventDefault()
-    setDragging(false)
-    void readFiles(event.dataTransfer.files)
-  }
-  const preview = React.useMemo(() => {
-    if (!markdown.trim()) return null
-    const { title, blocks } = splitMarkdown(markdown)
-    return {
-      title,
-      chars: Array.from(blocks.map(plainOf).join('').replace(/\s/g, '')).length,
-      images: countMarkdownImages(blocks),
-      transfers: feishuImageUrls(blocks.map(text => ({ text }))).length,
-    }
-  }, [markdown])
+  const locked = busy
   const close = () => { if (!locked) setState({ dialog: null }) }
   const submit = async event => {
     event.preventDefault()
@@ -1254,38 +1211,7 @@ export function NewDialog() {
           <button type="button" className="ws-icon-btn" aria-label="关闭" onClick={close}><Icon name="close" /></button>
         </div>
         {tab === 'paste' ? (
-          <div className="ws-import-workbench">
-            <div className={`ws-import-source ${dragging ? 'is-dragging' : ''}`} onDragOver={dragOver}
-              onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget)) setDragging(false) }} onDrop={drop}>
-              <div className="ws-import-source-head">
-                <label htmlFor="ws-import-markdown">文章 Markdown</label>
-                <button type="button" className="ws-btn" disabled={locked} onClick={() => fileInput.current?.click()}>
-                  <Icon name="upload" />{reading ? '正在读取…' : fileName ? '更换文件' : '选择文件'}
-                </button>
-                <input ref={fileInput} type="file" accept=".md,.markdown" hidden onChange={event => {
-                  void readFiles(event.target.files)
-                  event.target.value = ''
-                }} />
-              </div>
-              <textarea id="ws-import-markdown" required readOnly={locked} rows={preview ? 12 : 8} value={markdown}
-                placeholder="粘贴 Markdown，或把 .md 文件拖到这里" onChange={event => setMarkdown(event.target.value)} />
-              {fileName ? <p className="ws-import-file-name" title={fileName}>已载入 {fileName}</p> : null}
-              {fileError ? <p className="ws-warn" role="alert">{fileError}</p> : null}
-            </div>
-            <aside className="ws-import-summary" aria-label="导入预检">
-              <h3><Icon name="doc" />导入预检</h3>
-              {preview ? <>
-                <div className="ws-import-title"><span>识别到的标题</span><strong>{preview.title || '未识别到一级标题'}</strong></div>
-                <dl className="ws-import-metrics">
-                  <div><dt>估算字数</dt><dd>{preview.chars.toLocaleString('zh-CN')}</dd></div>
-                  <div><dt>正文图片</dt><dd>{preview.images}</dd></div>
-                </dl>
-                <p className="ws-import-transfer"><Icon name="upload" />{preview.transfers
-                  ? `${preview.transfers} 张飞书图片将在导入后后台转存`
-                  : '没有需要转存的飞书图片'}</p>
-              </> : <p className="ws-muted">载入 Markdown 后，在这里查看标题、字数和图片。</p>}
-            </aside>
-          </div>
+          <MarkdownImportFields Icon={Icon} value={markdown} onChange={setMarkdown} locked={locked} />
         ) : (
           <>
             <label className="ws-field"><span>选题</span>
@@ -1298,7 +1224,162 @@ export function NewDialog() {
         )}
         <div className="ws-dialog-foot">
           <button type="button" className="ws-btn" onClick={close}>取消</button>
-          <button type="submit" className="ws-btn is-primary" disabled={locked || (tab === 'paste' && !preview)}>{busy ? (tab === 'paste' ? '正在导入…' : '正在创建…') : (tab === 'paste' ? '放上稿面' : '开始写')}</button>
+          <button type="submit" className="ws-btn is-primary" disabled={locked || (tab === 'paste' && !markdown.trim())}>{busy ? (tab === 'paste' ? '正在导入…' : '正在创建…') : (tab === 'paste' ? '放上稿面' : '开始写')}</button>
+        </div>
+      </form>
+    </div>
+  )
+}
+
+const MAX_REIMPORT_JSON = 2_000_000
+
+function ReimportDialog({ article }) {
+  const [markdown, setMarkdown] = React.useState('')
+  const [updateTitle, setUpdateTitle] = React.useState(false)
+  const [plan, setPlan] = React.useState(null)
+  const [acknowledgeRemovedMedia, setAcknowledgeRemovedMedia] = React.useState(false)
+  const [busy, setBusy] = React.useState('')
+  const [error, setError] = React.useState('')
+  const sequence = React.useRef(0)
+  const taskReason = article.publishedAt ? '已发布稿件不能覆盖正文。'
+    : article.job || article.coverJob || article.inlineDiagramJob || article.imageImport?.total
+      ? '请等当前任务完成后再重新导入。' : ''
+  const locked = Boolean(busy || taskReason)
+  const incomingTitle = React.useMemo(() => markdown.trim() ? splitMarkdown(markdown).title : '', [markdown])
+  React.useEffect(() => () => { sequence.current++ }, [])
+  const close = () => {
+    if (busy) return
+    setState({ dialog: null, reimportArticleId: null })
+  }
+  const invalidate = () => {
+    sequence.current++
+    setPlan(null)
+    setAcknowledgeRemovedMedia(false)
+    setError('')
+  }
+  const changeMarkdown = value => { invalidate(); setMarkdown(value) }
+  const changeUpdateTitle = value => { invalidate(); setUpdateTitle(value) }
+  const checkReady = () => {
+    if (taskReason) { setError(taskReason); return false }
+    if (unsavedParagraphCount(article)) {
+      setError('请先保存或丢弃未保存的段落，再重新导入。')
+      return false
+    }
+    if (!markdown.trim()) { setError('请先粘贴或选择一个 Markdown 文件。'); return false }
+    return true
+  }
+  const checkSize = payload => {
+    if (new TextEncoder().encode(JSON.stringify(payload)).length <= MAX_REIMPORT_JSON) return true
+    setError('序列化后的导入内容超过 2 MB，请拆分或减少正文后再试。')
+    return false
+  }
+  const runPreview = async () => {
+    if (!checkReady()) return
+    const payload = { id: article.id, markdown, updateTitle }
+    if (!checkSize(payload)) return
+    const requestId = ++sequence.current
+    setBusy('preview')
+    setError('')
+    try {
+      const result = await previewMarkdownReimport(payload)
+      if (requestId !== sequence.current) return
+      setPlan(result)
+      setAcknowledgeRemovedMedia(false)
+    } catch (err) {
+      if (requestId !== sequence.current) return
+      setPlan(null)
+      setError(err.message)
+    } finally {
+      if (requestId === sequence.current) setBusy('')
+    }
+  }
+  const submit = async event => {
+    event.preventDefault()
+    if (busy) return
+    if (!plan) { await runPreview(); return }
+    if (!plan.changed || !checkReady()) return
+    if (plan.removedMedia.length && !acknowledgeRemovedMedia) {
+      setError('请先确认将移出的图片和动画卡。')
+      return
+    }
+    const payload = { id: article.id, markdown, updateTitle, token: plan.token, acknowledgeRemovedMedia }
+    if (!checkSize(payload)) return
+    const requestId = ++sequence.current
+    setBusy('submit')
+    setError('')
+    try {
+      const result = await reimportMarkdown(payload)
+      if (requestId !== sequence.current) return
+      const editing = getState().editing
+      const keepEditing = editing && result.current?.blocks.some(block => block.id === editing)
+      setState({
+        dialog: null, reimportArticleId: null, module: 'paper', paperHome: false,
+        view: 'layout', layout: null, svgCardCandidate: null,
+        editing: keepEditing ? editing : null, paperSession: Date.now(),
+      })
+      void rememberArticleView(article.id, 'layout')
+    } catch (err) {
+      if (requestId !== sequence.current) return
+      if (err.status === 409) {
+        setPlan(null)
+        setAcknowledgeRemovedMedia(false)
+      }
+      setError(err.message)
+    } finally {
+      if (requestId === sequence.current) setBusy('')
+    }
+  }
+  return (
+    <div className="ws-scrim" onMouseDown={event => { if (event.target === event.currentTarget) close() }}>
+      <form className="ws-dialog ws-import-dialog ws-reimport-dialog" role="dialog" aria-modal="true" aria-label="重新导入 Markdown" onSubmit={submit}>
+        <div className="ws-dialog-head">
+          <div>
+            <h2 className="ws-dialog-title">重新导入 Markdown</h2>
+            <p className="ws-muted ws-small">覆盖到「{article.title || '未命名文章'}」</p>
+          </div>
+          <button type="button" className="ws-icon-btn" aria-label="关闭" disabled={Boolean(busy)} onClick={close}><Icon name="close" /></button>
+        </div>
+        <MarkdownImportFields Icon={Icon} value={markdown} onChange={changeMarkdown} locked={locked} />
+        <div className="ws-reimport-options">
+          <p className="ws-muted ws-small">默认只替换正文；新文件的 front matter 不会写入稿件配置。文章 ID、封面、排期、排版配置和改稿聊天保留。</p>
+          {incomingTitle && incomingTitle !== article.title ? (
+            <label className="ws-reimport-title-option">
+              <input type="checkbox" checked={updateTitle} disabled={locked} onChange={event => changeUpdateTitle(event.target.checked)} />
+              <span><b>同时更新标题</b><small>{article.title || '无标题'} → {incomingTitle}</small></span>
+            </label>
+          ) : null}
+        </div>
+        {taskReason ? <p className="ws-warn" role="alert">{taskReason}</p> : null}
+        {plan ? (
+          <section className="ws-reimport-impact" aria-label="覆盖影响">
+            <h3>覆盖影响</h3>
+            <dl className="ws-import-metrics ws-reimport-metrics">
+              <div><dt>保留</dt><dd>{plan.kept} 块</dd></div>
+              <div><dt>移出</dt><dd>{plan.removed} 块</dd></div>
+              <div><dt>新增</dt><dd>{plan.added} 块</dd></div>
+            </dl>
+            <p className="ws-muted ws-small">没有可安全复用 ID 的内容按移出＋新增计算。旧摘要、标题候选和朱雀检查结果会在正文变化后清空。</p>
+            {plan.transfers ? <p className="ws-import-transfer"><Icon name="upload" />{plan.transfers} 张飞书图片将在覆盖后后台转存</p> : null}
+            {plan.bannerReview ? <p className="ws-warn">原有横幅样式和内容会保留，请复查旧横幅文案。</p> : null}
+            {plan.removedMedia.length ? (
+              <div className="ws-reimport-media">
+                <b>以下内容将从正文移出：</b>
+                <ul>{plan.removedMedia.map(item => <li key={item.blockId}>{item.kind === 'image' ? `图片：${item.caption || '无图注'}` : `动画卡：${item.title}`}（旧第 {item.number} 块）</li>)}</ul>
+                <label className="ws-reimport-acknowledge">
+                  <input type="checkbox" checked={acknowledgeRemovedMedia} disabled={locked} onChange={event => setAcknowledgeRemovedMedia(event.target.checked)} />
+                  <span>我确认这些图片和动画卡将从正文移出，可撤销</span>
+                </label>
+              </div>
+            ) : null}
+            {!plan.changed ? <p className="ws-warn">与当前稿件一致，无需覆盖。</p> : null}
+          </section>
+        ) : null}
+        {error ? <p className="ws-warn" role="alert">{error}</p> : null}
+        <div className="ws-dialog-foot">
+          <button type="button" className="ws-btn" disabled={Boolean(busy)} onClick={close}>取消</button>
+          <button type="submit" className="ws-btn is-primary" disabled={locked || !markdown.trim() || Boolean(plan && (!plan.changed || (plan.removedMedia.length && !acknowledgeRemovedMedia)))}>
+            {busy === 'preview' ? '正在预检…' : busy === 'submit' ? '正在覆盖…' : plan ? '确认覆盖' : '查看覆盖影响'}
+          </button>
         </div>
       </form>
     </div>
@@ -1878,11 +1959,18 @@ export function Studio() {
   const paperHome = useStudio(s => s.paperHome)
   const dialog = useStudio(s => s.dialog)
   const revisionBlockId = useStudio(s => s.revisionBlockId)
+  const reimportArticleId = useStudio(s => s.reimportArticleId)
+  const paperSession = useStudio(s => s.paperSession)
   const note = useStudio(s => s.toast)
   const item = MODULES.find(m => m.id === module) ?? MODULES[1]
+  React.useEffect(() => {
+    if (dialog === 'reimport' && data?.current?.id !== reimportArticleId) {
+      setState({ dialog: null, reimportArticleId: null })
+    }
+  }, [dialog, data?.current?.id, reimportArticleId])
   let content
   if (!data) content = <div className="ws-center">{error ? <p className="ws-muted">加载失败：{error}</p> : <span className="ws-shimmer">正在打开稿面…</span>}</div>
-  else if (item.id === 'paper') content = paperHome ? <DraftHome data={data} /> : <PaperModule data={data} />
+  else if (item.id === 'paper') content = paperHome ? <DraftHome data={data} /> : <PaperModule key={`${data.current?.id ?? 'empty'}:${paperSession ?? 0}`} data={data} />
   else if (item.id === 'insights') content = <InsightsView />
   else if (item.id === 'schedule') content = <ScheduleView data={data} />
   else if (item.id === 'skills') content = <SkillsView />
@@ -1896,6 +1984,7 @@ export function Studio() {
       {dialog === 'cover-history' && data?.current ? <CoverHistoryDialog key={data.current.id} article={data.current} /> : null}
       {dialog === 'cover' && data?.current ? <CoverStyleDialog key={data.current.id} article={data.current} /> : null}
       {dialog?.type === 'inline-diagram' && data?.current ? <InlineDiagramDialog key={`${data.current.id}:${dialog.mode}:${dialog.diagramId ?? 'blocks'}`} article={data.current} cloudinaryReady={data.cloudinaryReady} /> : null}
+      {dialog === 'reimport' && data?.current?.id === reimportArticleId ? <ReimportDialog key={reimportArticleId} article={data.current} /> : null}
       {dialog === 'new' ? <NewDialog /> : null}
       {dialog === 'settings' ? <SettingsDialog /> : null}
       {dialog === 'model' ? <ModelDialog /> : null}

@@ -586,6 +586,22 @@ body[data-ds-dark-theme] .ws-root { color-scheme: dark; --ok: #6fcb9c; --bad: #f
 .ws-import-source.is-dragging textarea { border-color: var(--accent); background: var(--accent-soft); }
 .ws-import-source p { margin: 0; font-size: 12px; }
 .ws-import-file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.ws-reimport-dialog { max-height: min(88dvh, 900px); }
+.ws-reimport-options { display: grid; gap: 10px; }
+.ws-reimport-options > p { margin: 0; line-height: 1.6; }
+.ws-reimport-title-option, .ws-reimport-acknowledge { display: flex; align-items: flex-start; gap: 9px; cursor: pointer; }
+.ws-reimport-title-option input, .ws-reimport-acknowledge input { flex: none; margin-top: 3px; }
+.ws-reimport-title-option span { display: grid; gap: 4px; min-width: 0; }
+.ws-reimport-title-option small { color: var(--muted); overflow-wrap: anywhere; }
+.ws-reimport-impact { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+.ws-reimport-impact h3, .ws-reimport-impact p { margin: 0; }
+.ws-reimport-impact h3 { font-size: 14px; }
+.ws-reimport-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0; }
+.ws-reimport-metrics dd { font-size: 16px; }
+.ws-reimport-media { display: grid; gap: 9px; padding-top: 10px; border-top: 1px solid var(--line); }
+.ws-reimport-media ul { display: grid; gap: 5px; margin: 0; padding-left: 20px; color: var(--ink2); font-size: 13px; }
+.ws-reimport-acknowledge { color: var(--warn); font-size: 13px; font-weight: 600; }
+.ws-manual > .ws-btn { margin: 0 8px 6px 0; }
 
 .ws-history-images figcaption { flex-wrap: wrap; gap: 6px; }
 .ws-history-image-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }

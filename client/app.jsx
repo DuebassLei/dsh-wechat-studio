@@ -874,7 +874,7 @@ function CoverHistoryDialog({ article }) {
                               if (await act('cover/select', { id: article.id, asset: image.id })) toast('已设为当前封面')
                             }}>设为当前封面</button>
                         )}
-                        <a className="ws-link" href={imageUrl(image.id) + '&download=1'} download={`cover.${run.format ?? 'png'}`}>下载</a>
+                        <a className="ws-link" href={imageUrl(image.id) + '&download=1'} download>下载</a>
                       </div>
                     </figcaption>
                   </figure>
@@ -922,7 +922,7 @@ function CoverPane({ article }) {
       <CoverJobProgress job={coverJob} />
       {!coverJob && coverError ? <p className="ws-warn" role="status">{coverError}</p> : null}
       {cover ? <>
-        <a className="ws-link" href={src + '&download=1'} download={`cover.${cover.format ?? 'png'}`}>下载封面</a>
+        <a className="ws-link" href={src + '&download=1'} download>下载封面</a>
         <details className="ws-manual"><summary>查看提示词</summary><p>{cover.prompt}</p></details>
       </> : null}
     </section>

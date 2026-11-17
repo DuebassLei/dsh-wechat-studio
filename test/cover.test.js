@@ -7,7 +7,7 @@ import { test } from 'node:test'
 import { deflateSync } from 'node:zlib'
 import { createArticle } from '../src/article.js'
 import { COVER_SKILL_DIR } from '../src/ai.js'
-import { generateBailianCover } from '../src/cover.js'
+import { coverDownloadName, generateBailianCover } from '../src/cover.js'
 import { BAILIAN_SIZES, modelsFor, providerFormats } from '../src/cover-options.js'
 import { COVER_STYLES } from '../src/cover-styles.js'
 import { publicSettings, readSettings, updateSettings } from '../src/settings.js'
@@ -52,6 +52,12 @@ function makePng(width, height) {
 }
 const jsonReply = (status, body) => async () => ({ ok: status >= 200 && status < 300, status, json: async () => body })
 const generationReply = () => ({ ok: true, status: 200, json: async () => ({ output: { choices: [{ message: { content: [{ image: IMAGE_URL }] } }] } }) })
+
+test('封面下载文件名：包含标题、风格、日期和序号，清理特殊字符并限制标题长度', () => {
+  const run = { style: 'kinetic', format: 'png', createdAt: '2026-11-17T10:00:00', images: [{ id: 'a' }, { id: 'b' }] }
+  assert.equal(coverDownloadName({ title: '提示词/写作：第二版*' }, run, 'b'), '提示词 写作：第二版-动感大字-2026-11-17-02.png')
+  assert.equal(coverDownloadName({ title: '文'.repeat(60) }, { images: [{ id: 'a' }] }, 'a'), `${'文'.repeat(48)}-封面-01.png`)
+})
 
 test('百炼封面：千问模型共用多模态接口，关掉自动扩写，下载 PNG 落盘', async () => {
   const png = makePng(94, 40)
@@ -211,7 +217,14 @@ async function coverHost({ provider, key, model, fetchImpl, llm }) {
     await route(deps, req, { setHeader() {}, end(value) { result = JSON.parse(value) } })
     return result
   }
-  return { store, article, request }
+  const requestImage = async path => {
+    const req = { url: '/wechat-studio/' + path, method: 'GET' }
+    const headers = {}
+    let body
+    await route(deps, req, { setHeader(name, value) { headers[name] = value }, end(value) { body = value } })
+    return { headers, body }
+  }
+  return { store, article, request, requestImage }
 }
 
 async function waitCover(request) {
@@ -240,7 +253,7 @@ test('封面路由：百炼走多模态接口并落盘，记录提供方', async
     calls.push({ url, init })
     return url === DASHSCOPE ? generationReply() : new Response(png)
   }
-  const { article, request } = await coverHost({ provider: 'bailian', key: 'sk-bl', model: 'wan2.7-image-pro', fetchImpl, llm: await coverLLM() })
+  const { article, request, requestImage } = await coverHost({ provider: 'bailian', key: 'sk-bl', model: 'wan2.7-image-pro', fetchImpl, llm: await coverLLM() })
   const res = await request('cover/generate', { id: article.id, style: 'classic', resolution: '2K', count: 1, format: 'png' })
   assert.ok(!res.error, res.error)
   const current = await waitCover(request)
@@ -251,6 +264,13 @@ test('封面路由：百炼走多模态接口并落盘，记录提供方', async
   assert.equal(current.coverRuns.at(-1).images.length, 1)
   assert.equal(current.cover.provider, 'bailian')
   assert.equal(current.cover.model, 'wan2.7-image-pro')
+  const download = await requestImage(`cover/image?id=${article.id}&asset=${current.cover.id}&download=1`)
+  assert.ok(Buffer.isBuffer(download.body))
+  const disposition = download.headers['content-disposition']
+  assert.match(disposition, /filename\*=UTF-8''/)
+  const filename = decodeURIComponent(disposition.split("filename*=UTF-8''")[1])
+  assert.equal(filename, coverDownloadName(article, current.coverRuns.at(-1), current.cover.id))
+  assert.match(filename, /^封面测试标题-经典深绿-\d{4}-\d{2}-\d{2}-01\.png$/)
 })
 
 test('封面路由：火山方舟仍走原接口', async () => {

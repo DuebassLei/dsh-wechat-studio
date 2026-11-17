@@ -12,7 +12,7 @@ import { applyMarkdownReimport, planMarkdownReimport } from './markdown-reimport
 import { generateInlineImage, readInlineAsset, readInlineImage, removeInlineImages, removeOrphanInlineImages, saveInlineImage } from './inline-assets.js'
 import { analyzeInlineDiagrams, DIAGRAM_KINDS, insertDiagramBlock, sourceHash } from './inline-diagrams.js'
 import { loadInlineStyle, readInlineStyleCatalog } from './inline-skill.js'
-import { coverPrompt, generateArkCover, generateBailianCover, readCover, saveCover } from './cover.js'
+import { coverDownloadName, coverPrompt, generateArkCover, generateBailianCover, readCover, saveCover } from './cover.js'
 import { COVER_STYLES } from './cover-styles.js'
 import { STYLES, THEMES, detectionText, renderLayout, resolveLayoutPreferences } from './layout.js'
 import { applyRule, buildInsights, EXPERIMENT_RESULTS, importData, INSIGHTS_EMPTY, previewRule } from './insights.js'
@@ -503,7 +503,11 @@ export async function route(deps, req, res) {
       }
       res.setHeader('content-type', `image/${format}`)
       res.setHeader('cache-control', 'private, no-store')
-      if (url.searchParams.has('download')) res.setHeader('content-disposition', `attachment; filename="cover.${format}"`)
+      if (url.searchParams.has('download')) {
+        const filename = coverDownloadName(article, run, id)
+        const encoded = encodeURIComponent(filename).replace(/'/g, '%27')
+        res.setHeader('content-disposition', `attachment; filename="cover.${format}"; filename*=UTF-8''${encoded}`)
+      }
       return res.end(image)
     }
     if (path === 'revisions') {

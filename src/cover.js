@@ -4,6 +4,7 @@ import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { BAILIAN_SIZES } from './cover-options.js'
+import { COVER_STYLES } from './cover-styles.js'
 export { coverPrompt } from './cover-prompt.js'
 
 const run = promisify(execFile)
@@ -114,4 +115,22 @@ export async function saveCover(root, image, format) {
 export function readCover(root, id, format = 'png') {
   if (!/^[a-f0-9-]{36}$/.test(id ?? '')) throw new Error('无效的封面 ID。')
   return readFile(join(root, 'covers', `${id}.${format}`))
+}
+
+export function coverDownloadName(article, run, imageId) {
+  const clean = value => String(value ?? '')
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^[. ]+|[. ]+$/g, '')
+  const title = clean(article.title).slice(0, 48) || '未命名文章'
+  const style = clean(COVER_STYLES.find(item => item.id === run.style)?.name) || '封面'
+  const createdAt = new Date(run.createdAt)
+  const date = Number.isNaN(createdAt.getTime()) ? '' : [
+    createdAt.getFullYear(),
+    String(createdAt.getMonth() + 1).padStart(2, '0'),
+    String(createdAt.getDate()).padStart(2, '0'),
+  ].join('-')
+  const index = Math.max(0, run.images.findIndex(image => image.id === imageId)) + 1
+  return `${[title, style, date].filter(Boolean).join('-')}-${String(index).padStart(2, '0')}.${run.format ?? 'png'}`
 }

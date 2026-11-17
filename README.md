@@ -1,14 +1,199 @@
-# 公众号成稿台
+<p align="center">
+  <img src="docs/assets/hero.webp" alt="公众号成稿台：从写稿到复盘，一个工作台完成" width="100%">
+</p>
 
-**面向微信公众号长文的 DeepSeek Harness 插件。** 在侧栏里完成写稿、改稿、质检、封面生成、排版和发布后复盘。
+<p align="center">
+  <a href="#写作与改稿">功能展示</a> ·
+  <a href="#快速开始">安装</a> ·
+  <a href="#配置与数据">配置与数据</a> ·
+  <a href="#开发">开发</a>
+</p>
 
-[快速开始](#快速开始) · [写作与发布](#写作与发布) · [数据复盘](#数据复盘) · [配置与数据](#配置与数据) · [开发](#开发)
+<p align="center">
+  <img alt="DeepSeek Harness 0.2.x" src="https://img.shields.io/badge/DeepSeek%20Harness-0.2.x-111?style=flat-square">
+  <img alt="桌面版与网页版" src="https://img.shields.io/badge/%E6%A1%8C%E9%9D%A2%E7%89%88-%E7%BD%91%E9%A1%B5%E7%89%88-111?style=flat-square">
+  <a href="LICENSE"><img alt="MIT 开源" src="https://img.shields.io/badge/MIT-%E5%BC%80%E6%BA%90-111?style=flat-square"></a>
+</p>
+
+<br>
+
+## 它是什么
+
+装在 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 侧栏里的公众号工作台。导入已有 Markdown 后，按段改稿、检查文字、生成封面和正文配图，再复制成公众号可用的排版。写好的文章可以排期，发布后导入后台数据做复盘。
+
+主要页面：**稿面 · 排期 · 复盘 · 技能**。封面、正文插图和 SVG 动画卡集中在稿面的「配图」页。
+
+### 从写稿到复盘
+
+<p>
+  <img src="docs/assets/workflow.gif" alt="导入 Markdown 稿件，按段改稿与质检，完成配图和排版，最后排期发布并复盘数据" width="100%">
+</p>
+
+<br>
+
+## 写作与改稿
+
+<table>
+<tr>
+<td width="62%">
+  <img src="docs/assets/writing.webp" alt="成稿工作区：左侧对话改稿，中间编辑正文，右侧选择标题" width="100%">
+</td>
+<td valign="top">
+<p><b>导入 Markdown，接着改稿。</b></p>
+<p>支持已有的 .md / .markdown 稿件，导入后即可在稿面上继续编辑。</p>
+<p><b>说一句，按段改。</b></p>
+<p>正文可以直接编辑，也可以告诉左侧助手改哪一段、怎么改。标题候选、正文目录和插入格式都在同一张稿面上。</p>
+<p><b>改错了能回头。</b></p>
+<p>未保存文字会在本机暂存，支持版本对比、撤销和恢复。</p>
+</td>
+</tr>
+</table>
+
+<br>
+
+## 朱雀质检
+
+<table>
+<tr>
+<td valign="top" width="38%">
+<p><b>检测结果落回正文。</b></p>
+<p>通过 API 在线检测，或导入朱雀 PDF 报告。待处理段落会出现在纸边批注和右侧队列里，点一下就能定位。</p>
+<p><b>先看改动，再决定留不留。</b></p>
+<p>支持单段改写和批量处理；每处修改都能看差异、保留原文或恢复上一版。</p>
+</td>
+<td>
+  <img src="docs/assets/quality.webp" alt="朱雀质检：正文标红、纸边批注、待处理队列和改写操作" width="100%">
+</td>
+</tr>
+</table>
+
+<br>
+
+## 封面与正文插图
+
+<table>
+<tr>
+<td width="62%">
+  <img src="docs/assets/cover-inline.webp" alt="封面生成历史与当前封面，右侧可见正文插图和动画卡工具" width="100%">
+</td>
+<td valign="top">
+<p><b>封面可以反复挑。</b></p>
+<p>六套内置风格，接通火山方舟或阿里云百炼后生成。每次结果都留在历史里，可以查看提示词、下载或重新选用。</p>
+<p><b>正文插图不擅自改稿。</b></p>
+<p>先分析值得配图的位置，再由你决定生成和插入。确认位置后才上传图床并写入 Markdown，生成阶段不改正文。</p>
+</td>
+</tr>
+</table>
+
+<br>
+
+## SVG 动画卡
+
+<table>
+<tr>
+<td valign="top" width="38%">
+<p><b>把一段内容变成一张会动的卡。</b></p>
+<p>概念、步骤、拆解、对比、表格、柱状图、时间线和手机演示，八种卡型都根据你选择的段落生成。</p>
+<p><b>先预览，再插入。</b></p>
+<p>候选标题和条目可以编辑，确认效果后才进入正文。卡片以 Markdown 保存，可原位播放、收起、重播或单独复制。</p>
+<p><b>跟整篇排版保持一致。</b></p>
+<p>单卡和全文共用当前风格与配色，复制结果保留 SMIL 动画。</p>
+</td>
+<td>
+  <img src="docs/assets/svg-cards.webp" alt="正文中的 SVG 动画卡和右侧候选生成工具" width="100%">
+</td>
+</tr>
+</table>
+
+<br>
+
+## 公众号排版
+
+<table>
+<tr>
+<td width="62%">
+  <img src="docs/assets/layout.webp" alt="公众号排版预览，包含正文风格、配色、开头横幅和复制全文" width="100%">
+</td>
+<td valign="top">
+<p><b>选好风格，整篇一起变。</b></p>
+<p>10 套正文风格、15 套配色，加上开头横幅和文末关注卡。正文插图与动画卡也会进入同一份排版。</p>
+<p><b>复制后贴进公众号。</b></p>
+<p>点「复制全文到公众号」即可粘贴到编辑器。自查报告会提示外部图片、视频占位等需要人工确认的项目。</p>
+</td>
+</tr>
+</table>
+
+<br>
+
+## 排期发布
+
+<table>
+<tr>
+<td valign="top" width="38%">
+<p><b>待排、今天和这一周，分开看。</b></p>
+<p>待排稿件支持搜索和就绪筛选，可以拖拽或按日期、时段排期。今日待办与过点待确认分开，周历会随窗口宽度调整。</p>
+<p><b>实际发表时间单独记。</b></p>
+<p>标记已发时可补记真实时间，重复确认不会覆盖首次记录，也可以更正或撤销。</p>
+</td>
+<td>
+  <img src="docs/assets/schedule.webp" alt="排期页：待排稿件、今日待办、过点确认和一周日历" width="100%">
+</td>
+</tr>
+</table>
+
+<br>
+
+## 数据复盘
+
+<table>
+<tr>
+<td width="62%">
+  <img src="docs/assets/insights.webp" alt="数据复盘：账号指标、每日阅读趋势和流量来源" width="100%">
+</td>
+<td valign="top">
+<p><b>后台数据直接进来看。</b></p>
+<p>导入微信公众号后台的 XLS，查看账号趋势、用户增长、单篇明细和流量来源，不必重新整理成另一套表。</p>
+<p><b>从数据走到下一篇。</b></p>
+<p>按题材和标题套路比较文章表现，记录下一次要试什么。数据提炼出的写作规则，确认后可以保存为 Skill。</p>
+</td>
+</tr>
+</table>
+
+<br>
 
 ## 快速开始
 
 ### 安装到 DeepSeek Harness
 
-需要 DeepSeek Harness `>=0.2.1-rc.5 <0.3.0`、Node.js 20 或更高版本，以及 Python 3。排版使用 Python 标准库。封面裁切目前依赖 macOS 的 `sips`。
+需要 DeepSeek Harness `>=0.2.1-rc.5 <0.3.0`。排版需要 Python 3，使用 Python 标准库。封面裁切目前依赖 macOS 的 `sips`。
+
+#### 直接安装（推荐）
+
+在 DeepSeek Harness 的「插件」→「添加插件」中输入包名 `dsh-wechat-studio`，点击安装。
+
+<p align="center">
+  <img src="docs/assets/install.webp" alt="在 DeepSeek Harness 的添加插件窗口中输入 dsh-wechat-studio" width="100%">
+</p>
+
+也可以用命令行安装。桌面版：
+
+```bash
+dsh plugin --profile desktop add dsh-wechat-studio
+```
+
+网页版：
+
+```bash
+dsh plugin --profile web add dsh-wechat-studio
+```
+
+桌面版请在安装前完全退出 DeepSeek Harness，安装后重新打开；网页版安装后重启 `dsh web`。终端里没有 `dsh` 时，可先在桌面版菜单中选择「管理 dsh 命令」。安装完成后，从宿主侧栏打开「公众号成稿台」。
+
+卸载桌面版插件可运行 `dsh plugin --profile desktop remove dsh-wechat-studio`。
+
+#### 从源码安装
+
+需要 Node.js 20 或更高版本。
 
 ```bash
 git clone https://github.com/lqshow/dsh-wechat-studio.git
@@ -18,31 +203,13 @@ npm run build
 dsh plugin --profile desktop add "$PWD"
 ```
 
-桌面版请在安装前完全退出 DeepSeek Harness（`⌘Q`），安装后重新打开。网页版把命令中的 `desktop` 换成 `web`，安装后重启 `dsh web`。从宿主侧栏打开「公众号成稿台」。
-
-卸载桌面版插件可运行 `dsh plugin --profile desktop remove dsh-wechat-studio`。
+网页版把最后一条命令中的 `desktop` 换成 `web`。
 
 ### 独立预览
 
 在仓库目录执行 `npm ci`、`npm run build` 和 `npm run dev`，然后打开 [本地预览](http://127.0.0.1:4173)。预览使用模拟宿主和固定的模型回复，数据保存在仓库的 `.dev/` 下。
 
-## 写作与发布
-
-| 步骤 | 用法 |
-| --- | --- |
-| 创建稿件 | 输入选题和素材生成正文、标题候选与摘要，或粘贴、拖入已有的 Markdown（`.md` / `.markdown`）。 |
-| 编辑正文 | 直接编辑段落，或在对话里指定要修改的段落。支持卡片插入、正文目录、本机暂存、版本对比和恢复。 |
-| 朱雀质检 | 通过 API 检测，或导入朱雀 PDF 报告。纸边批注可定位待处理段落，支持单段改写和批量处理。 |
-| 封面生成 | 选择六套内置风格之一，通过火山方舟或阿里云百炼生成封面。可以从生成历史中选用已有封面。 |
-| 正文插图 | 在「配图」页分析整篇或指定段落，确认建议后选择风格生成单张插图。预览并确认位置后才上传图床、插入 Markdown 图片；生成和上传阶段都不会自动改正文。可删除失效或已忽略记录；整篇重写会清空旧锚点记录。 |
-| SVG 动画卡 | 在「配图」页选择内容段落和卡型，生成概念、步骤、拆解、对比、表格、柱状图、时间线或手机演示卡。候选可编辑、预览和单卡复制，确认后才插入正文；卡片以 Markdown 保存，并随全文使用当前排版风格和配色。一篇建议最多 3 张。 |
-| 公众号排版 | 选择正文风格、配色、开头横幅和文末关注卡。预览支持 10 套正文风格和 15 套配色。 |
-| 复制到公众号 | 在排版预览中点「复制全文到公众号」，然后粘贴到公众号编辑器。按自查报告处理外部图片和视频占位。 |
-| 排期发布 | 待排区支持标题搜索和「全部／就绪」筛选，可拖拽或按日期、时段排期；今日待办与过点待确认分开显示，周历按宽度自适应列数。标记已发时可补记实际发表时间，重复确认保留首次记录，也可更正或撤销；旧记录未确认的时间不会冒充实发时间。复盘导入数据后仍按规范化标题匹配。 |
-
-素材入口目前为预留页面。
-
-## 数据复盘
+## 复盘数据说明
 
 在「复盘」中导入微信公众号后台导出的 `.xls` 文件。三类数据可独立查看。
 

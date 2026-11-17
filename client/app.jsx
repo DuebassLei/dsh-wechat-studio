@@ -1565,7 +1565,7 @@ const SKILL_INFO = {
 function Rail({ module }) {
   return (
     <nav className="ws-rail" aria-label="模块">
-      {MODULES.map(item => (
+      {MODULES.filter(item => item.id !== 'materials').map(item => (
         <button type="button" key={item.id} className={module === item.id ? 'is-on' : ''} aria-current={module === item.id ? 'page' : undefined} onClick={() => setState({ module: item.id, ...(item.id === 'paper' ? { paperHome: true } : {}) })}>
           <Icon name={item.icon} size={20} />
           <span>{item.label}</span>

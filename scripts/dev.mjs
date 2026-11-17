@@ -7,6 +7,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
+const { version: currentVersion } = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
 process.env.DSH_HOME ||= join(root, '.dev')
 const { createHandler } = await import('../src/host.js')
 
@@ -96,6 +97,9 @@ const services = {
 // 假的朱雀接口：密钥填 bad 报 401；含「不仅」的那行判 AI，含「值得一提」的判疑似，其余判人工
 const fetchImpl = async (url, init) => {
   const send = (status, body) => ({ ok: status < 300, status, text: async () => JSON.stringify(body) })
+  if (url === 'https://registry.npmjs.org/dsh-wechat-studio/latest' || url === 'https://registry.npmmirror.com/dsh-wechat-studio/latest') {
+    return Response.json({ version: process.env.DEV_LATEST_VERSION || currentVersion })
+  }
   if (url === 'https://ark.cn-beijing.volces.com/api/v3/images/generations') {
     // 94x40 纯色 PNG，够 saveCover 裁切；慢一点返回，让界面上的生成进度看得见
     await new Promise(resolve => setTimeout(resolve, Number(process.env.DEV_COVER_DELAY || 2500)))

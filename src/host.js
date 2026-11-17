@@ -21,6 +21,7 @@ import { pdfToText } from './report.js'
 import { publicSettings, readSettings, updateSettings } from './settings.js'
 import { scheduleTime as parseScheduleTime } from './schedule-time.js'
 import { Store } from './store.js'
+import { createVersionChecker } from './version.js'
 import { detect } from './zhuque.js'
 import { draftSvgCard, insertSvgCard, previewSvgCard } from './svg-cards.js'
 
@@ -461,6 +462,7 @@ export async function route(deps, req, res) {
 
   if (get) {
     if (path === 'state') return ok()
+    if (path === 'version') return json(res, 200, await deps.versionChecker.check())
     if (path === 'settings') return json(res, 200, { ...publicSettings(await readSettings(store.root)), version: VERSION })
     if (path === 'models') return json(res, 200, { providers: await listModels(ctx), default: defaultSelection(ctx), current: modelOverride() })
     if (path === 'skills') {
@@ -1100,7 +1102,8 @@ export function requestRejection(ctx, req) {
 export function createHandler(ctx, { store = new Store(), fetchImpl } = {}) {
   const pipeline = new Pipeline({ ctx, store, skillsDir: join(store.root, 'skills'), fetchImpl })
   const insightsStore = new Store(store.root, { file: 'insights.json', empty: INSIGHTS_EMPTY })
-  const deps = { ctx, store, pipeline, insightsStore, fetchImpl }
+  const versionChecker = createVersionChecker({ currentVersion: VERSION, fetchImpl })
+  const deps = { ctx, store, pipeline, insightsStore, versionChecker, fetchImpl }
   const inlineCleanup = (async () => {
     try {
       JSON.parse(await readFile(store.file, 'utf8'))

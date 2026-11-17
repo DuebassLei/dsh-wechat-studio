@@ -14,6 +14,7 @@
   --accent-soft: color-mix(in srgb, var(--accent) 12%, var(--card));
   --ok: #1f7a4d;
   --bad: #b3312a;
+  --update: #d96f32;
   --paper: #f7f7f6;
   --paper-ink: #2b2b2b;
   --paper-line: #dededc;
@@ -25,7 +26,7 @@
   font-family: var(--dsw-font-family, -apple-system, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', sans-serif);
   font-size: 14px; line-height: 22px; -webkit-font-smoothing: antialiased;
 }
-body[data-ds-dark-theme] .ws-root { color-scheme: dark; --ok: #6fcb9c; --bad: #f28b81; }
+body[data-ds-dark-theme] .ws-root { color-scheme: dark; --ok: #6fcb9c; --bad: #f28b81; --update: #ffad78; }
 .ws-root *, .ws-root *::before, .ws-root *::after { box-sizing: border-box; }
 :where(.ws-root) button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-align: inherit; }
 :where(.ws-root) button:disabled { cursor: default; opacity: .5; }
@@ -61,6 +62,7 @@ body[data-ds-dark-theme] .ws-root { color-scheme: dark; --ok: #6fcb9c; --bad: #f
 .ws-rail button:hover { background: var(--hover); color: var(--ink); }
 .ws-rail button.is-on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .ws-rail small { font-size: 10px; line-height: 12px; color: var(--ink2); font-weight: 400; opacity: .8; }
+.ws-update-dot { position: absolute; top: 8px; right: 14px; width: 7px; height: 7px; border-radius: 50%; background: var(--update); box-shadow: 0 0 0 2px var(--panel); }
 .ws-col { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .ws-crumb { display: flex; align-items: center; gap: 4px; min-width: 0; font-size: 13px; color: var(--ink2); }
 .ws-crumb > span { flex: none; }
@@ -520,7 +522,9 @@ body[data-ds-dark-theme] .ws-root { color-scheme: dark; --ok: #6fcb9c; --bad: #f
 .ws-settings-nav button { display: flex; align-items: center; gap: 8px; text-align: left; white-space: nowrap; padding: 10px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--ink); cursor: pointer; }
 .ws-settings-nav button:hover { background: var(--hover); }
 .ws-settings-nav button[aria-current] { color: var(--accent); background: var(--accent-soft); font-weight: 650; }
-.ws-settings-version { margin-top: auto; padding: 10px; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.ws-settings-version { margin-top: auto; padding: 10px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; font-size: 12px; color: var(--ink2); white-space: nowrap; }
+.ws-settings-update { display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px; border-radius: 999px; background: color-mix(in srgb, var(--update) 12%, var(--card)); color: var(--update); font-size: 11px; line-height: 16px; text-decoration: none; }
+.ws-settings-update:hover { text-decoration: underline; }
 .ws-settings-content { min-width: 0; min-height: 0; overflow: auto; padding: 20px 24px; }
 .ws-settings-section-head { display: flex; gap: 12px; align-items: center; justify-content: space-between; }
 .ws-settings-section-head h3 { margin: 0; font-size: 18px; }
@@ -534,7 +538,7 @@ body[data-ds-dark-theme] .ws-root { color-scheme: dark; --ok: #6fcb9c; --bad: #f
 @media (max-width: 600px) {
   .ws-settings-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
   .ws-settings-nav { flex-direction: row; border-right: 0; border-bottom: 1px solid var(--line); }
-  .ws-settings-version { margin: auto 0 auto auto; }
+  .ws-settings-version { margin: auto 0 auto auto; flex-direction: row; align-items: center; }
   .ws-settings-content { padding: 16px; }
 }
 

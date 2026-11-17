@@ -1,12 +1,13 @@
 {
   "name": "dsh-wechat-studio",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "DeepSeek Harness 插件「公众号成稿台」：写稿、按段改稿、朱雀报告质检、公众号排版预览和一键复制。",
   "type": "module",
   "main": "src/host.js",
   "exports": {
     ".": "./src/host.js",
     "./client": "./dist/client.js",
+    "./icon": "./icon.svg",
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },
@@ -22,6 +23,7 @@
   },
   "homepage": "https://github.com/lqshow/dsh-wechat-studio#readme",
   "license": "MIT",
+  "icon": "./icon.svg",
   "scripts": {
     "build": "node scripts/build.mjs",
     "watch": "node scripts/build.mjs --watch",
@@ -35,5 +37,5 @@
     "react-dom": "^18.3.1",
     "unpdf": "^1.4.0"
   },
-  "files": ["src", "dist", "skills", "vendor", "cordis.patch.yml", "README.md", "LICENSE"]
+  "files": ["src", "dist", "skills", "vendor", "icon.svg", "cordis.patch.yml", "README.md", "LICENSE"]
 }

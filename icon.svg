@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">公众号成稿台</title>
+  <desc id="desc">暖橙色背景上的白色稿纸，最后一行文字化作向右上发布的箭头。</desc>
+  <defs>
+    <linearGradient id="background" x1="32" y1="20" x2="224" y2="240" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFB982"/>
+      <stop offset="1" stop-color="#FF8757"/>
+    </linearGradient>
+    <filter id="paper-shadow" x="35" y="25" width="190" height="215" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#8A3D24" flood-opacity="0.18"/>
+    </filter>
+  </defs>
+
+  <rect width="256" height="256" rx="60" fill="url(#background)"/>
+  <circle cx="218" cy="38" r="64" fill="#FFFFFF" opacity="0.12"/>
+  <circle cx="34" cy="226" r="76" fill="#FFFFFF" opacity="0.08"/>
+
+  <g transform="rotate(-6 128 128)">
+    <path d="M61 46C61 39.4 66.4 34 73 34H159L197 72V202C197 208.6 191.6 214 185 214H73C66.4 214 61 208.6 61 202V46Z" fill="#FFFDF9" filter="url(#paper-shadow)"/>
+    <path d="M159 34V61C159 67.1 163.9 72 170 72H197L159 34Z" fill="#FFE0C8"/>
+    <path d="M159 34L197 72H170C163.9 72 159 67.1 159 61V34Z" fill="#F7C7A7"/>
+
+    <path d="M88 91H158" stroke="#262522" stroke-width="11" stroke-linecap="round"/>
+    <path d="M88 122H167" stroke="#262522" stroke-width="11" stroke-linecap="round"/>
+    <path d="M88 153H120" stroke="#262522" stroke-width="11" stroke-linecap="round"/>
+    <path d="M119 181L174 139M151 137L177 137L177 163" fill="none" stroke="#F27645" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

@@ -11,7 +11,7 @@ import { COVER_STYLES } from '../src/cover-styles.js'
 // 稿面：左边对话改稿，中间是稿子和纸边批注，右边是标题、朱雀质检和导出。
 import React from 'react'
 import { cardMarkdown, emphasisFormats, formatSelection, insertFormats } from './editor-format.js'
-import { act, copyDetectionText, copyMarkdown, copyText, countCurrentParagraphDrafts, getState, loadLayout, loadModels, loadRevisions, loadSettings, loadSkills, previewMarkdownReimport, reimportMarkdown, rememberArticleView, saveSettings, setState, testZhuque, toast, uploadReport, useStudio } from './state.js'
+import { act, copyDetectionText, copyMarkdown, copyText, countCurrentParagraphDrafts, getState, loadLayout, loadModels, loadRevisions, loadSettings, loadSkills, loadVersion, previewMarkdownReimport, reimportMarkdown, rememberArticleView, saveSettings, setState, testZhuque, toast, uploadReport, useStudio } from './state.js'
 import { InsightsView } from './insights.jsx'
 import { InlineDiagramDialog, InlineDiagramPane } from './inline-diagrams.jsx'
 import { MarkdownImportFields } from './markdown-import.jsx'
@@ -1454,8 +1454,9 @@ function ModelDialog() {
   )
 }
 
-function SettingsDialog() {
+function SettingsDialog({ onOpenPlugin }) {
   const settings = useStudio(s => s.settings)
+  const update = useStudio(s => s.update)
   const settingsPage = useStudio(s => s.settingsPage)
   const [page, setPage] = React.useState(settingsPage ?? 'brand')
   const [cloudinary, setCloudinary] = React.useState({})
@@ -1527,7 +1528,12 @@ function SettingsDialog() {
               <button key={item.id} type="button" aria-current={page === item.id ? 'page' : undefined}
                 onClick={() => setPage(item.id)}><Icon name={item.icon} /><span>{item.title}</span></button>
             ))}
-            {settings.version ? <span className="ws-settings-version">v{settings.version}</span> : null}
+            {settings.version ? <div className="ws-settings-version">
+              <span>v{settings.version}</span>
+              {update ? <a className="ws-settings-update" href="https://github.com/lqshow/dsh-wechat-studio/releases/latest" target="_blank" rel="noreferrer"
+                aria-label={`新版本 v${update.latest}，前往更新`}
+                onClick={event => { if (onOpenPlugin?.()) { event.preventDefault(); close() } }}>新版本 <strong>↑ v{update.latest}</strong></a> : null}
+            </div> : null}
           </nav>
           <div className="ws-settings-content">
             <div className="ws-settings-section-head">
@@ -1655,6 +1661,7 @@ const SKILL_INFO = {
 }
 
 function Rail({ module }) {
+  const update = useStudio(s => s.update)
   return (
     <nav className="ws-rail" aria-label="模块">
       {MODULES.filter(item => item.id !== 'materials').map(item => (
@@ -1665,7 +1672,9 @@ function Rail({ module }) {
         </button>
       ))}
       <span className="ws-grow" />
-      <button type="button" onClick={() => setState({ dialog: 'settings' })}><Icon name="gear" size={20} /><span>设置</span></button>
+      <button type="button" title={update ? `发现新版本 v${update.latest}` : '设置'} onClick={() => setState({ dialog: 'settings' })}>
+        <Icon name="gear" size={20} /><span>设置</span>{update ? <i className="ws-update-dot" aria-hidden="true" /> : null}
+      </button>
     </nav>
   )
 }
@@ -1963,7 +1972,7 @@ function DraftHome({ data }) {
   )
 }
 
-export function Studio() {
+export function Studio({ onOpenPlugin }) {
   const data = useStudio(s => s.data)
   const error = useStudio(s => s.error)
   const module = useStudio(s => s.module)
@@ -1974,6 +1983,7 @@ export function Studio() {
   const paperSession = useStudio(s => s.paperSession)
   const note = useStudio(s => s.toast)
   const item = MODULES.find(m => m.id === module) ?? MODULES[1]
+  React.useEffect(() => { loadVersion() }, [])
   React.useEffect(() => {
     if (dialog === 'reimport' && data?.current?.id !== reimportArticleId) {
       setState({ dialog: null, reimportArticleId: null })
@@ -1997,7 +2007,7 @@ export function Studio() {
       {dialog?.type === 'inline-diagram' && data?.current ? <InlineDiagramDialog key={`${data.current.id}:${dialog.mode}:${dialog.diagramId ?? 'blocks'}`} article={data.current} cloudinaryReady={data.cloudinaryReady} /> : null}
       {dialog === 'reimport' && data?.current?.id === reimportArticleId ? <ReimportDialog key={reimportArticleId} article={data.current} /> : null}
       {dialog === 'new' ? <NewDialog /> : null}
-      {dialog === 'settings' ? <SettingsDialog /> : null}
+      {dialog === 'settings' ? <SettingsDialog onOpenPlugin={onOpenPlugin} /> : null}
       {dialog === 'model' ? <ModelDialog /> : null}
       {note ? <div className={`ws-toast ${note.error ? 'is-error' : ''}`} role="status">{note.text}</div> : null}
     </>

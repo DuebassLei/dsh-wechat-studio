@@ -1,5 +1,6 @@
 // 浏览器侧的状态：Host 状态的本地镜像，加上只属于界面的视图、弹窗等。
 import React from 'react'
+import { isNewerRelease } from '../src/version.js'
 
 const BASE = 'wechat-studio/'
 
@@ -7,7 +8,7 @@ export function countCurrentParagraphDrafts(blocks, drafts) {
   return blocks.filter(block => drafts.has(block.id)).length
 }
 
-let snap = { data: null, error: null, view: 'paper', paperHome: true, dialog: null, toast: null, editing: null, layout: null, pending: null, chatOpen: true, bannerTried: {}, module: 'paper', skills: null, settings: null, insights: null, insightsRange: 'all', insightsError: null, insightsRulePreview: null, svgCardCandidate: null }
+let snap = { data: null, error: null, view: 'paper', paperHome: true, dialog: null, toast: null, editing: null, layout: null, pending: null, chatOpen: true, bannerTried: {}, module: 'paper', skills: null, settings: null, update: null, insights: null, insightsRange: 'all', insightsError: null, insightsRulePreview: null, svgCardCandidate: null }
 const listeners = new Set()
 let timer = null
 
@@ -221,6 +222,16 @@ export async function loadSettings() {
   } catch (err) {
     toast(err.message, true)
     return false
+  }
+}
+
+export async function loadVersion() {
+  try {
+    const result = await request('version')
+    const newer = result.updateAvailable ?? isNewerRelease(result.latest, result.current)
+    setState({ update: result.latest && newer ? { latest: result.latest } : null })
+  } catch {
+    // An offline update check should never interrupt the writing surface.
   }
 }
 

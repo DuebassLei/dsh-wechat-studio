@@ -7,12 +7,12 @@ import css from './styles.css'
 const PANEL_ID = 'wechat-studio'
 const LABEL = '公众号成稿台'
 
-function Panel() {
+function Panel({ onOpenPlugin }) {
   React.useEffect(() => { refresh() }, [])
   return (
     <div className="ws-root">
       <style>{css}</style>
-      <Studio />
+      <Studio onOpenPlugin={onOpenPlugin} />
     </div>
   )
 }
@@ -24,6 +24,16 @@ function PanelIcon({ size }) {
 export const inject = ['slots']
 
 export function apply(ctx) {
-  ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: PANEL_ID }, Panel))
+  const onOpenPlugin = () => {
+    try {
+      const navigation = ctx.get('pluginNavigation')
+      if (typeof navigation?.openBundle !== 'function') return false
+      navigation.openBundle('dsh-wechat-studio')
+      return true
+    } catch {
+      return false
+    }
+  }
+  ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: PANEL_ID }, props => <Panel {...props} onOpenPlugin={onOpenPlugin} />))
   ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({ name: 'sidebar.panellist', id: PANEL_ID, order: 6, label: () => LABEL }, PanelIcon))
 }

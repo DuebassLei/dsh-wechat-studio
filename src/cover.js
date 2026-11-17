@@ -114,9 +114,8 @@ export function coverDownloadName(article, run, imageId) {
   const style = clean(COVER_STYLES.find(item => item.id === run.style)?.name) || '封面'
   const createdAt = new Date(run.createdAt)
   const date = Number.isNaN(createdAt.getTime()) ? '' : [
-    createdAt.getFullYear(),
-    String(createdAt.getMonth() + 1).padStart(2, '0'),
-    String(createdAt.getDate()).padStart(2, '0'),
+    [createdAt.getFullYear(), String(createdAt.getMonth() + 1).padStart(2, '0'), String(createdAt.getDate()).padStart(2, '0')].join('-'),
+    [createdAt.getHours(), createdAt.getMinutes(), createdAt.getSeconds()].map(value => String(value).padStart(2, '0')).join(''),
   ].join('-')
   const index = Math.max(0, run.images.findIndex(image => image.id === imageId)) + 1
   return `${[title, style, date].filter(Boolean).join('-')}-${String(index).padStart(2, '0')}.${run.format ?? 'png'}`

@@ -56,7 +56,7 @@ const generationReply = () => ({ ok: true, status: 200, json: async () => ({ out
 
 test('封面下载文件名：包含标题、风格、日期和序号，清理特殊字符并限制标题长度', () => {
   const run = { style: 'kinetic', format: 'png', createdAt: '2026-11-17T10:00:00', images: [{ id: 'a' }, { id: 'b' }] }
-  assert.equal(coverDownloadName({ title: '提示词/写作：第二版*' }, run, 'b'), '提示词 写作：第二版-动感大字-2026-11-17-02.png')
+  assert.equal(coverDownloadName({ title: '提示词/写作：第二版*' }, run, 'b'), '提示词 写作：第二版-动感大字-2026-11-17-100000-02.png')
   assert.equal(coverDownloadName({ title: '文'.repeat(60) }, { images: [{ id: 'a' }] }, 'a'), `${'文'.repeat(48)}-封面-01.png`)
 })
 
@@ -271,7 +271,7 @@ test('封面路由：百炼走多模态接口并落盘，记录提供方', async
   assert.match(disposition, /filename\*=UTF-8''/)
   const filename = decodeURIComponent(disposition.split("filename*=UTF-8''")[1])
   assert.equal(filename, coverDownloadName(article, current.coverRuns.at(-1), current.cover.id))
-  assert.match(filename, /^封面测试标题-经典深绿-\d{4}-\d{2}-\d{2}-01\.png$/)
+  assert.match(filename, /^封面测试标题-经典深绿-\d{4}-\d{2}-\d{2}-\d{6}-01\.png$/)
 })
 
 test('封面路由：火山方舟仍走原接口', async () => {

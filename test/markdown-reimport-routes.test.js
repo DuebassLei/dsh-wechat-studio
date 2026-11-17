@@ -280,3 +280,66 @@ test('行内图片移出未确认时返回 409，正文保持不变', async () =
   assert.match(response.body.error, /确认/)
   assert.equal(article.blocks[0].text, `图例：![图一](${url}) 和 ![图二](${url})`)
 })
+
+test('转存后撤销普通编辑保留图床链接，再撤销覆盖恢复原飞书链接', async () => {
+  const { store, deps, article, request } = await setup({ markdown: `# 标题\n\n保留段落\n\n![飞书图](${FEISHU})` })
+  await updateSettings(store.root, { cloudinary: { cloudName: 'demo', apiKey: 'key', apiSecret: 'secret' } })
+  const oldImageImport = { error: '旧状态', remaining: 1 }
+  article.imageImport = oldImageImport
+  const markdown = `# 标题\n\n新增开头\n\n保留段落\n\n![飞书图](${FEISHU})`
+  const plan = await preview(request, article, markdown)
+  let release
+  const gate = new Promise(resolve => { release = resolve })
+  deps.fetchImpl = async () => { await gate; return Response.json({ secure_url: CLOUDINARY }) }
+  assert.equal((await request('articles/reimport', { id: article.id, markdown, token: plan.token })).status, 200)
+  const target = article.blocks.find(block => block.text === '保留段落')
+  assert.equal((await request('block/update', { id: article.id, blockId: target.id, expectedText: target.text, text: '普通手动编辑' })).status, 200)
+  release()
+  await waitFor(async () => (await request('state')).body.current.imageImport === null)
+  assert.equal((await request('undo', { id: article.id })).status, 200)
+  assert.equal(article.blocks.find(block => block.id === target.id).text, '保留段落')
+  assert.equal(article.blocks.at(-1).text, `![飞书图](${CLOUDINARY})`)
+  assert.equal(article.imageImport, null)
+  assert.equal((await request('undo', { id: article.id })).status, 200)
+  assert.equal(article.blocks.at(-1).text, `![飞书图](${FEISHU})`)
+  assert.deepEqual(article.imageImport, oldImageImport)
+})
+
+test('失败后重试的转存同样保留普通编辑快照中的图床链接', async () => {
+  const { store, deps, article, request } = await setup({ markdown: `# 标题\n\n保留段落\n\n![飞书图](${FEISHU})` })
+  await updateSettings(store.root, { cloudinary: { cloudName: 'demo', apiKey: 'key', apiSecret: 'secret' } })
+  const markdown = `# 标题\n\n新增开头\n\n保留段落\n\n![飞书图](${FEISHU})`
+  const plan = await preview(request, article, markdown)
+  deps.fetchImpl = async () => new Response('failed', { status: 500 })
+  assert.equal((await request('articles/reimport', { id: article.id, markdown, token: plan.token })).status, 200)
+  await waitFor(async () => Boolean((await request('state')).body.current.imageImport?.error))
+  const target = article.blocks.find(block => block.text === '保留段落')
+  assert.equal((await request('block/update', { id: article.id, blockId: target.id, expectedText: target.text, text: '普通手动编辑' })).status, 200)
+  let release
+  const gate = new Promise(resolve => { release = resolve })
+  deps.fetchImpl = async () => { await gate; return Response.json({ secure_url: CLOUDINARY }) }
+  await request('images/retry', { id: article.id })
+  release()
+  await waitFor(async () => (await request('state')).body.current.imageImport === null)
+  assert.equal((await request('undo', { id: article.id })).status, 200)
+  assert.equal(article.blocks.at(-1).text, `![飞书图](${CLOUDINARY})`)
+  assert.equal((await request('undo', { id: article.id })).status, 200)
+  assert.equal(article.blocks.at(-1).text, `![飞书图](${FEISHU})`)
+})
+
+test('第二次覆盖的转存不会改写最近一次覆盖前的快照', async () => {
+  const { store, deps, article, request } = await setup()
+  await updateSettings(store.root, { cloudinary: { cloudName: 'demo', apiKey: 'key', apiSecret: 'secret' } })
+  const firstMarkdown = `# 标题\n\n![飞书图](${FEISHU})`
+  const first = await preview(request, article, firstMarkdown)
+  deps.fetchImpl = async () => new Response('failed', { status: 500 })
+  assert.equal((await request('articles/reimport', { id: article.id, markdown: firstMarkdown, token: first.token, acknowledgeRemovedMedia: true })).status, 200)
+  await waitFor(async () => Boolean((await request('state')).body.current.imageImport?.error))
+  const secondMarkdown = `# 标题\n\n新增开头\n\n![飞书图](${FEISHU})`
+  const second = await preview(request, article, secondMarkdown)
+  deps.fetchImpl = async () => Response.json({ secure_url: CLOUDINARY })
+  assert.equal((await request('articles/reimport', { id: article.id, markdown: secondMarkdown, token: second.token })).status, 200)
+  await waitFor(async () => (await request('state')).body.current.imageImport === null)
+  assert.equal(article.history[0].blocks[1].text, '![旧图](https://example.com/old.png)')
+  assert.equal(article.history[1].blocks[0].text, `![飞书图](${FEISHU})`)
+})

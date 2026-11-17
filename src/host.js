@@ -304,7 +304,7 @@ function imageJobMap(store) {
   return imageJobs.get(store)
 }
 
-function startImageImport(deps, article, urls, { currentOnly = false } = {}) {
+function startImageImport(deps, article, urls) {
   if (!urls.length) return
   const { store, fetchImpl } = deps
   const jobs = imageJobMap(store)
@@ -327,7 +327,9 @@ function startImageImport(deps, article, urls, { currentOnly = false } = {}) {
       const current = state.articles.find(item => item.id === article.id)
       if (!current) return
       // Apply URLs to the latest text so edits made during upload are preserved.
-      const blockSets = currentOnly ? [current.blocks] : [current.blocks, ...current.history.map(entry => entry.blocks)]
+      const boundary = current.history.findLastIndex(entry => entry.reimportBefore)
+      const recent = current.history.slice(boundary + 1)
+      const blockSets = [current.blocks, ...recent.map(entry => entry.blocks)]
       for (const blocks of blockSets) {
         for (const block of blocks) {
           block.text = replaceFeishuImages(block.text, replacements)
@@ -707,7 +709,7 @@ export async function route(deps, req, res) {
         article.notice = { text: '已覆盖正文，可在改稿对比查看，或用顶部撤销恢复。', at: new Date().toISOString() }
         return applied
       })
-      startImageImport(deps, result.article, result.urls, { currentOnly: true })
+      startImageImport(deps, result.article, result.urls)
       return ok()
     }
     case 'articles/new': {
@@ -770,10 +772,8 @@ export async function route(deps, req, res) {
     case 'images/retry': {
       const article = mustFind(await store.read(), body.id)
       const urls = feishuImageUrls(article.blocks)
-      if (urls.length) {
-        const currentOnly = article.history.some(entry => entry.reimportBefore)
-        startImageImport(deps, article, urls, { currentOnly })
-      } else await store.update(() => { article.imageImport = null })
+      if (urls.length) startImageImport(deps, article, urls)
+      else await store.update(() => { article.imageImport = null })
       return ok()
     }
     case 'articles/view': {

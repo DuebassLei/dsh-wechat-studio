@@ -1,6 +1,7 @@
-// 打包两样东西：
+// 打包三样东西：
 // 1. client/ → dist/client.js，DSH 的 lazy CommonJS 模块，react 由宿主提供，CSS 内联成字符串。
-// 2. unpdf → dist/unpdf.mjs，读朱雀报告 PDF 用。打进来之后插件没有任何运行时依赖，装上就能跑。
+// 2. unpdf → dist/unpdf.mjs，读朱雀报告 PDF 用。
+// 3. image-crop → dist/image-crop.mjs，跨平台裁切封面用；后两者打进来之后插件没有任何运行时依赖，装上就能跑。
 import { build, context } from 'esbuild'
 import { readFile } from 'node:fs/promises'
 
@@ -36,7 +37,20 @@ const pdf = {
   legalComments: 'none',
 }
 
+const imageCrop = {
+  stdin: { contents: "export { cropCover } from './src/image-crop.js'", resolveDir: process.cwd() },
+  outfile: 'dist/image-crop.mjs',
+  bundle: true,
+  format: 'esm',
+  platform: 'node',
+  target: 'node20',
+  minify: true,
+  legalComments: 'none',
+  banner: { js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);" },
+}
+
 await build(pdf)
+await build(imageCrop)
 if (watch) {
   const ctx = await context(client)
   await ctx.watch()

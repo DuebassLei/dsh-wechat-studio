@@ -1,13 +1,10 @@
-import { execFile } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { promisify } from 'node:util'
 import { BAILIAN_SIZES } from './cover-options.js'
 import { COVER_STYLES } from './cover-styles.js'
 export { coverPrompt } from './cover-prompt.js'
 
-const run = promisify(execFile)
 const MAX_IMAGE = 24 * 1024 * 1024
 
 export async function generateArkCover(prompt, { apiKey, model, resolution, format, referenceImage = null, subject = '封面' }, fetchImpl = fetch) {
@@ -92,23 +89,13 @@ export async function saveCover(root, image, format) {
   const dir = join(root, 'covers')
   await mkdir(dir, { recursive: true, mode: 0o700 })
   const id = randomUUID()
-  const input = join(dir, `${id}.source.${format}`)
-  const output = join(dir, `${id}.crop.${format}`)
   try {
-    await writeFile(input, image, { mode: 0o600 })
-    const { stdout } = await run('sips', ['-g', 'pixelWidth', '-g', 'pixelHeight', input], { timeout: 20_000 })
-    const width = Number(stdout.match(/pixelWidth: (\d+)/)?.[1])
-    const height = Number(stdout.match(/pixelHeight: (\d+)/)?.[1])
-    const units = Math.min(Math.floor(width / 47), Math.floor(height / 20))
-    if (!units || units > 100) throw new Error('Invalid image dimensions')
-    // 47:20 produces exactly 2.35:1 and keeps the center of the composition.
-    await run('sips', ['--cropToHeightWidth', String(units * 20), String(units * 47), input, '--out', output], { timeout: 20_000 })
-    await rename(output, join(dir, `${id}.${format}`))
+    const { cropCover } = await import('../dist/image-crop.mjs')
+    const cropped = cropCover(image, format)
+    await writeFile(join(dir, `${id}.${format}`), cropped, { mode: 0o600 })
     return id
   } catch {
-    throw new Error('封面裁切或保存失败，请确认 DSH 宿主可运行 macOS 的 sips。')
-  } finally {
-    await Promise.allSettled([rm(input, { force: true }), rm(output, { force: true })])
+    throw new Error('封面裁切或保存失败，请重试。')
   }
 }
 

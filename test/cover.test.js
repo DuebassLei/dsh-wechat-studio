@@ -1,15 +1,16 @@
 import assert from 'node:assert/strict'
 import { mkdtempSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
+import { readdir, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { deflateSync } from 'node:zlib'
 import { createArticle } from '../src/article.js'
 import { COVER_SKILL_DIR } from '../src/ai.js'
-import { coverDownloadName, generateBailianCover } from '../src/cover.js'
+import { coverDownloadName, generateBailianCover, readCover, saveCover } from '../src/cover.js'
 import { BAILIAN_SIZES, modelsFor, providerFormats } from '../src/cover-options.js'
 import { COVER_STYLES } from '../src/cover-styles.js'
+import { PNG } from 'pngjs'
 import { publicSettings, readSettings, updateSettings } from '../src/settings.js'
 import { Store } from '../src/store.js'
 
@@ -309,4 +310,17 @@ test('封面路由：felt 风格不传真人参考图', async () => {
   assert.equal(JSON.parse(calls[0].init.body).image, undefined, 'felt 是毛毡微缩场景，不能带真人参考图')
   assert.equal(current.coverRuns.at(-1).status, 'succeeded')
   assert.equal(current.cover.style, 'felt')
+})
+
+test('saveCover：跨平台裁切落盘，失败提示不再依赖 sips', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ws-save-cover-'))
+  const id = await saveCover(root, makePng(100, 40), 'png')
+  const decoded = PNG.sync.read(await readCover(root, id))
+  assert.equal(decoded.width, 94)
+  assert.equal(decoded.height, 40)
+  assert.deepEqual(await readdir(join(root, 'covers')), [`${id}.png`], '不留临时文件')
+  await assert.rejects(
+    saveCover(root, Buffer.from('not an image'), 'png'),
+    error => !/sips/.test(error.message) && /封面裁切或保存失败/.test(error.message),
+  )
 })

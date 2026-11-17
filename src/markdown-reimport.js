@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
-import { parseMarkdownImage, splitMarkdown } from './article.js'
+import { newId, parseMarkdownImage, snapshot, splitMarkdown, touch } from './article.js'
+import { feishuImageUrls } from './markdown-images.js'
 import { parseSvgCardBlock } from './svg-cards.js'
 
 const fail = message => Object.assign(new Error(message), { status: 400 })
@@ -83,4 +84,28 @@ export function planMarkdownReimport(article, markdown, { updateTitle = false } 
     changed, kept, removed: article.blocks.length - kept, added: entries.length - kept,
     entries, removedMedia,
   }
+}
+
+export function applyMarkdownReimport(article, plan) {
+  const bodyChanged = plan.entries.length !== article.blocks.length
+    || plan.entries.some((entry, index) => entry.text !== article.blocks[index].text)
+  snapshot(article, '重新导入 Markdown')
+  article.history.at(-1).reimportBefore = {
+    summary: structuredClone(article.summary),
+    zhuque: structuredClone(article.zhuque),
+    imageImport: structuredClone(article.imageImport),
+  }
+  if (bodyChanged) {
+    article.blocks = plan.entries.map(entry => ({ id: entry.existing?.id ?? newId(), text: entry.text, check: null }))
+    article.summary = ''
+    article.titles = []
+    article.zhuque = { round: 0, lastAt: null }
+    article.imageImport = null
+  }
+  if (plan.finalTitle !== article.title) {
+    article.title = plan.finalTitle
+    article.hook = null
+  }
+  touch(article)
+  return { article, urls: bodyChanged ? feishuImageUrls(article.blocks) : [] }
 }

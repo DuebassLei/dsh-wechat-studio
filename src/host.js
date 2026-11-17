@@ -8,6 +8,7 @@ import { BANNER_CHOICES, BANNER_STYLES, DEFAULT_BANNER } from './banner.js'
 import { blockKind, clearSchedule, correctPublishedAt, createArticle, fixPlan, HOOK_IDS, isCheckable, listMeta, markPublished, newId, revisionChanges, setSchedule, snapshot, splitMarkdown, toMarkdown, touch, undo, unpublish } from './article.js'
 import { transferFeishuImages, uploadInlineImage } from './cloudinary.js'
 import { feishuImageUrls, replaceFeishuImages } from './markdown-images.js'
+import { applyMarkdownReimport, planMarkdownReimport } from './markdown-reimport.js'
 import { generateInlineImage, readInlineAsset, readInlineImage, removeInlineImages, removeOrphanInlineImages, saveInlineImage } from './inline-assets.js'
 import { analyzeInlineDiagrams, DIAGRAM_KINDS, insertDiagramBlock, sourceHash } from './inline-diagrams.js'
 import { loadInlineStyle, readInlineStyleCatalog } from './inline-skill.js'
@@ -303,7 +304,7 @@ function imageJobMap(store) {
   return imageJobs.get(store)
 }
 
-function startImageImport(deps, article, urls) {
+function startImageImport(deps, article, urls, { currentOnly = false } = {}) {
   if (!urls.length) return
   const { store, fetchImpl } = deps
   const jobs = imageJobMap(store)
@@ -326,7 +327,8 @@ function startImageImport(deps, article, urls) {
       const current = state.articles.find(item => item.id === article.id)
       if (!current) return
       // Apply URLs to the latest text so edits made during upload are preserved.
-      for (const blocks of [current.blocks, ...current.history.map(entry => entry.blocks)]) {
+      const blockSets = currentOnly ? [current.blocks] : [current.blocks, ...current.history.map(entry => entry.blocks)]
+      for (const blocks of blockSets) {
         for (const block of blocks) {
           block.text = replaceFeishuImages(block.text, replacements)
           if (block.prev) block.prev = replaceFeishuImages(block.prev, replacements)
@@ -421,6 +423,19 @@ function scheduleTime(value) {
 
 function mustActive(article, message) {
   if (article.archivedAt) throw Object.assign(new Error(message), { status: 409 })
+}
+
+function importConflict(message) {
+  return Object.assign(new Error(message), { status: 409 })
+}
+
+function assertCanReimport(deps, article) {
+  mustActive(article, '归档稿件不能重新导入，请先恢复。')
+  if (article.publishedAt) throw importConflict('已发布稿件不能覆盖正文。')
+  notBusy(deps.pipeline, article.id)
+  if (coverJobMap(deps.store).has(article.id) || imageJobMap(deps.store).has(article.id) || diagramJobMap(deps.store).has(article.id)) {
+    throw importConflict('请等封面生成、图片转存或插图任务完成后再重新导入。')
+  }
 }
 
 function mustPastPublication(at) {
@@ -663,6 +678,37 @@ export async function route(deps, req, res) {
         else throw Object.assign(new Error('没有这篇数据趋势文章'), { status: 404 })
       })
       return json(res, 200, await insightsView(deps, body.range))
+    case 'articles/reimport/preview': {
+      const article = mustFind(await store.read(), body.id)
+      assertCanReimport(deps, article)
+      const plan = planMarkdownReimport(article, body.markdown, { updateTitle: body.updateTitle === true })
+      return json(res, 200, {
+        token: plan.token, currentTitle: article.title, incomingTitle: plan.incomingTitle, finalTitle: plan.finalTitle,
+        changed: plan.changed, kept: plan.kept, removed: plan.removed, added: plan.added,
+        removedMedia: plan.removedMedia, transfers: feishuImageUrls(plan.entries).length,
+        bannerReview: Boolean(article.banners?.[article.bannerStyle ?? DEFAULT_BANNER]),
+      })
+    }
+    case 'articles/reimport': {
+      const result = await store.update(state => {
+        const article = mustFind(state, body.id)
+        assertCanReimport(deps, article)
+        const plan = planMarkdownReimport(article, body.markdown, { updateTitle: body.updateTitle === true })
+        if (plan.token !== body.token) throw importConflict('稿件或导入选项已变化，请重新预检。')
+        if (plan.removedMedia.length && body.acknowledgeRemovedMedia !== true) {
+          throw importConflict('请先确认将移出的图片和动画卡。')
+        }
+        if (!plan.changed) throw importConflict('与当前稿件一致，无需覆盖。')
+        const applied = applyMarkdownReimport(article, plan)
+        if (applied.urls.length) {
+          article.imageImport = { error: '图片转存中断，可以重试。', remaining: applied.urls.length }
+        }
+        article.notice = { text: '已覆盖正文，可在改稿对比查看，或用顶部撤销恢复。', at: new Date().toISOString() }
+        return applied
+      })
+      startImageImport(deps, result.article, result.urls, { currentOnly: true })
+      return ok()
+    }
     case 'articles/new': {
       const hasBody = typeof body.markdown === 'string' && body.markdown.trim()
       if (!hasBody && !String(body.topic ?? '').trim() && !String(body.material ?? '').trim()) throw Object.assign(new Error('写一句选题，或者贴入已有的文章。'), { status: 400 })
@@ -723,8 +769,10 @@ export async function route(deps, req, res) {
     case 'images/retry': {
       const article = mustFind(await store.read(), body.id)
       const urls = feishuImageUrls(article.blocks)
-      if (urls.length) startImageImport(deps, article, urls)
-      else await store.update(() => { article.imageImport = null })
+      if (urls.length) {
+        const currentOnly = article.history.some(entry => entry.reimportBefore)
+        startImageImport(deps, article, urls, { currentOnly })
+      } else await store.update(() => { article.imageImport = null })
       return ok()
     }
     case 'articles/view': {
@@ -968,6 +1016,9 @@ export async function route(deps, req, res) {
       await store.update(state => {
         const article = mustFind(state, body.id)
         notBusy(pipeline, article.id)
+        if (article.history.at(-1)?.reimportBefore && imageJobMap(store).has(article.id)) {
+          throw importConflict('图片转存完成后可恢复覆盖前版本。')
+        }
         const label = undo(article)
         if (label) article.notice = { text: `已撤销：${label}`, at: new Date().toISOString() }
       })

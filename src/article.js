@@ -128,6 +128,13 @@ export function undo(article) {
   article.hook = last.hook ?? null
   article.titles = last.titles
   article.blocks = last.blocks
+  if (last.reimportBefore) {
+    for (const key of ['summary', 'zhuque', 'imageImport']) {
+      const value = last.reimportBefore[key]
+      if (value === undefined) delete article[key]
+      else article[key] = structuredClone(value)
+    }
+  }
   touch(article)
   return last.label
 }

@@ -326,6 +326,11 @@ body[data-ds-dark-theme] .ws-root { color-scheme: dark; --ok: #6fcb9c; --bad: #f
 .ws-card-insert label { display: grid; gap: 5px; }
 .ws-card-insert :is(input, textarea) { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--panel); color: var(--ink); }
 .ws-card-insert textarea { resize: vertical; }
+.ws-local-image { display: grid; gap: 10px; padding: 12px; border: 1px dashed var(--line); border-radius: 10px; background: var(--panel); }
+.ws-local-image img { display: block; width: 100%; max-height: 200px; object-fit: contain; border-radius: 7px; background: #fff; }
+.ws-local-image-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ws-local-image-actions > span { flex-basis: 100%; overflow-wrap: anywhere; }
+.ws-card-insert input[readonly] { background: var(--panel); color: var(--ink2); }
 .ws-revision-dialog { width: min(980px, calc(100% - 24px)); max-width: none; max-height: min(82dvh, 850px); margin: auto; padding: 0; gap: 0; overflow: hidden; color: var(--ink); }
 .ws-revision-dialog:not([open]) { display: none; }
 .ws-revision-dialog::backdrop { background: rgb(0 0 0 / .38); }

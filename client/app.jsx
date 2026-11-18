@@ -11,7 +11,7 @@ import { COVER_STYLES } from '../src/cover-styles.js'
 // 稿面：左边对话改稿，中间是稿子和纸边批注，右边是标题、朱雀质检和导出。
 import React from 'react'
 import { cardMarkdown, emphasisFormats, formatSelection, insertFormats } from './editor-format.js'
-import { act, copyDetectionText, copyMarkdown, copyText, countCurrentParagraphDrafts, getState, loadLayout, loadModels, loadRevisions, loadSettings, loadSkills, loadVersion, previewMarkdownReimport, reimportMarkdown, rememberArticleView, saveSettings, setState, testZhuque, toast, uploadReport, useStudio } from './state.js'
+import { act, copyDetectionText, copyMarkdown, copyText, countCurrentParagraphDrafts, getState, loadLayout, loadModels, loadRevisions, loadSettings, loadSkills, loadVersion, previewMarkdownReimport, reimportMarkdown, rememberArticleView, saveSettings, setState, testZhuque, toast, uploadImage, uploadReport, useStudio } from './state.js'
 import { InsightsView } from './insights.jsx'
 import { InlineDiagramDialog, InlineDiagramPane } from './inline-diagrams.jsx'
 import { MarkdownImportFields } from './markdown-import.jsx'
@@ -260,30 +260,77 @@ function UnsavedParagraphs({ article }) {
   </div>
 }
 
-function CardInsert({ card, onInsert, onClose }) {
+function CardInsert({ card, onInsert, onClose, onUpload }) {
   const ref = React.useRef(null)
+  const fileInput = React.useRef(null)
   const heading = React.useId()
   const image = card.id === 'image' || card.id === 'long'
   const selectedUrl = image && /^https?:\/\/\S+$/i.test(card.selection)
   const [title, setTitle] = React.useState(image && !selectedUrl ? card.selection.replace(/\s+/g, ' ') : '')
   const [value, setValue] = React.useState(!image || selectedUrl ? card.selection : '')
+  const [file, setFile] = React.useState(card.file ?? null)
+  const [preview, setPreview] = React.useState('')
+  const [uploading, setUploading] = React.useState(false)
   const [error, setError] = React.useState('')
   React.useEffect(() => {
     const dialog = ref.current
     dialog.showModal()
     return () => { if (dialog.open) dialog.close() }
   }, [])
+  React.useEffect(() => {
+    if (!file) { setPreview(''); return }
+    const url = URL.createObjectURL(file)
+    setPreview(url)
+    return () => URL.revokeObjectURL(url)
+  }, [file])
   const label = insertFormats.flatMap(group => group.items).find(([id]) => id === card.id)?.[1]
+  const close = () => { if (!uploading) onClose() }
+  const chooseFile = next => {
+    if (!next) return
+    if (next.size > 10 * 1024 * 1024) { setError('本地图片不能超过 10 MB。'); return }
+    setFile(next)
+    setError('')
+  }
+  const submit = async event => {
+    event.preventDefault()
+    if (uploading) return
+    setError('')
+    try {
+      let next = value
+      if (image && file) {
+        setUploading(true)
+        next = await onUpload(file)
+        setValue(next)
+        setFile(null)
+      }
+      onInsert(cardMarkdown(card.id, title, next))
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setUploading(false)
+    }
+  }
   return <dialog ref={ref} className="ws-dialog ws-card-insert" aria-labelledby={heading}
-    onCancel={e => { e.preventDefault(); onClose() }} onClick={e => { if (e.target === e.currentTarget) onClose() }}>
-    <form onSubmit={e => {
-      e.preventDefault()
-      try { onInsert(cardMarkdown(card.id, title, value)) } catch (err) { setError(err.message) }
-    }}>
+    onCancel={e => { e.preventDefault(); close() }} onClick={e => { if (e.target === e.currentTarget) close() }}>
+    <form onSubmit={submit}>
       <div className="ws-dialog-head"><h2 id={heading} className="ws-dialog-title">插入{label}</h2>
-        <button type="button" className="ws-icon-btn" aria-label="关闭" onClick={onClose}><Icon name="close" /></button>
+        <button type="button" className="ws-icon-btn" aria-label="关闭" disabled={uploading} onClick={close}><Icon name="close" /></button>
       </div>
-      {image ? <label>图片地址<input value={value} onChange={e => setValue(e.target.value)} placeholder="https://…" required /></label> : null}
+      {image ? <>
+        <div className="ws-local-image">
+          {preview ? <img src={preview} alt="待上传图片预览" /> : null}
+          <div className="ws-local-image-actions">
+            <button type="button" className="ws-btn" disabled={uploading} onClick={() => fileInput.current?.click()}><Icon name="upload" />{file ? '更换本地图片' : '选择本地图片'}</button>
+            {file ? <button type="button" className="ws-link" disabled={uploading} onClick={() => setFile(null)}>移除</button> : null}
+            <span className="ws-muted ws-small">{file ? file.name : 'PNG、JPEG、GIF 或 WebP，不超过 10 MB；也可在正文里直接粘贴。'}</span>
+          </div>
+          <input ref={fileInput} type="file" accept="image/png,image/jpeg,image/gif,image/webp,.png,.jpg,.jpeg,.gif,.webp" hidden onChange={event => {
+            chooseFile(event.target.files?.[0])
+            event.target.value = ''
+          }} />
+        </div>
+        <label>或填写图片地址<input value={value} onChange={e => setValue(e.target.value)} placeholder={file ? '上传后自动填入图床地址' : 'https://…'} required={!file} readOnly={Boolean(file) || uploading} /></label>
+      </> : null}
       <label>{image ? '图注（选填）' : card.id === 'prompt' ? '文件名（选填）' : '标题（选填）'}
         <input value={title} onChange={e => setTitle(e.target.value)} maxLength={120}
           placeholder={image ? '描述这张图' : card.id === 'prompt' ? '提示词.txt' : '提示词'} />
@@ -291,8 +338,8 @@ function CardInsert({ card, onInsert, onClose }) {
       {!image ? <label>提示词内容<textarea value={value} onChange={e => setValue(e.target.value)} rows={6} required /></label> : null}
       {error ? <p className="ws-warn" role="alert">{error}</p> : null}
       <div className="ws-dialog-foot">
-        <button type="button" className="ws-btn" onClick={onClose}>取消</button>
-        <button type="submit" className="ws-btn is-primary">插入卡片</button>
+        <button type="button" className="ws-btn" disabled={uploading} onClick={close}>取消</button>
+        <button type="submit" className="ws-btn is-primary" disabled={uploading}>{uploading ? '正在上传图床…' : '插入卡片'}</button>
       </div>
     </form>
   </dialog>
@@ -380,6 +427,19 @@ function Editor({ articleId, block, number, sectionNumber, busy, nextId, onDone 
     document.addEventListener('pointerdown', dismiss)
     return () => document.removeEventListener('pointerdown', dismiss)
   }, [])
+  const pasteImage = event => {
+    if (saving) return
+    const data = event.clipboardData
+    const item = [...(data?.items ?? [])].find(item => item.kind === 'file' && item.type.startsWith('image/'))
+    const file = item?.getAsFile() ?? [...(data?.files ?? [])].find(file => file.type.startsWith('image/'))
+    if (!file) return
+    event.preventDefault()
+    if (menu.current) menu.current.open = false
+    const el = ref.current
+    const start = el.selectionStart
+    const end = el.selectionEnd
+    setCard({ id: 'image', start, end, selection: draft.text.slice(start, end), file })
+  }
   return (
     <div className="ws-editor" onKeyDown={event => {
       if (card) return
@@ -418,7 +478,7 @@ function Editor({ articleId, block, number, sectionNumber, busy, nextId, onDone 
       {preview ? <div className="ws-editor-preview">{splitMarkdown(draft.text, { bodyOnly: true }).blocks.map((text, index) =>
         <BlockBody key={index} sectionNumber={sectionNumber} block={{ kind: blockKind(text), text }} />)}</div> : (
         <textarea ref={ref} className="ws-edit" value={draft.text} aria-label={`编辑第 ${number} 段`} readOnly={saving}
-          maxLength={20000} onChange={event => edit(event.target.value)} />
+          maxLength={20000} onChange={event => edit(event.target.value)} onPaste={pasteImage} />
       )}
       <div className="ws-editor-footer">
         <span role="status">{saving ? '正在保存…' : storageFailed ? '本地暂存失败，退出前请保存正文' : conflict ? '正文已有新版本，当前修改仍保留。' : empty ? '清空后可手动删除这段' : changed ? '已在本机暂存，尚未写入正文' : '⌘ / Ctrl + Enter 保存'}</span>
@@ -431,6 +491,7 @@ function Editor({ articleId, block, number, sectionNumber, busy, nextId, onDone 
         </div>
       </div>
       {card ? <CardInsert card={card} onClose={() => { setCard(null); focusRange(card.start, card.end) }}
+        onUpload={file => uploadImage(file, articleId)}
         onInsert={markdown => {
           const next = formatSelection(draft.text, card.start, card.end, card.id, markdown)
           if (next.text.length > 20000) throw new Error('插入后会超过这一段的 20000 字符上限。')

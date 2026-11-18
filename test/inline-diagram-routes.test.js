@@ -33,9 +33,11 @@ async function setup({ fetchImpl, cloudinary = true, llm = null } = {}) {
   const deps = { ctx: { get: name => services[name] ?? null }, store, pipeline: { job: () => null }, fetchImpl }
   let responseHeaders = {}
   const request = async (path, payload) => {
+    const binary = Buffer.isBuffer(payload)
     const req = {
       url: `/wechat-studio/${path}`, method: payload ? 'POST' : 'GET',
-      async *[Symbol.asyncIterator]() { if (payload) yield Buffer.from(JSON.stringify(payload)) },
+      headers: binary ? { 'content-type': 'image/png' } : {},
+      async *[Symbol.asyncIterator]() { if (payload) yield binary ? payload : Buffer.from(JSON.stringify(payload)) },
     }
     let result
     const res = {
@@ -62,6 +64,14 @@ async function setup({ fetchImpl, cloudinary = true, llm = null } = {}) {
 
 const arkSuccess = async () => ({ ok: true, status: 200, json: async () => ({ data: [{ b64_json: PNG.toString('base64') }] }) })
 const cloudSuccess = async () => Response.json({ secure_url: PUBLIC_URL })
+
+test('本地图片通过原始字节上传，只返回图床地址，不自动修改正文', async () => {
+  const { article, request } = await setup({ fetchImpl: cloudSuccess })
+  const before = toMarkdown(article)
+  const response = await request(`images/upload?id=${article.id}`, PNG)
+  assert.equal(response.url, PUBLIC_URL)
+  assert.equal(toMarkdown(article), before)
+})
 
 async function seedGenerated(store, article) {
   const assetId = await saveInlineImage(store.root, PNG)

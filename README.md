@@ -226,9 +226,9 @@ dsh plugin --profile desktop remove dsh-wechat-studio
 | 朱雀 API | 在线检测正文 | 在 EdgeOne Makers 的 Models → API Key 创建密钥，在插件「设置 → 朱雀质检」测试并保存。也可直接上传报告 PDF。 |
 | 火山方舟 | 生成封面图和正文插图（Doubao Seedream） | 在「设置 → 封面生成」选择提供方为火山方舟，填写 API Key 并选择生图模型。 |
 | 阿里云百炼 | 生成封面图和正文插图（通义万相 / 千问图像，仅 PNG） | 在「设置 → 封面生成」选择阿里云百炼，填写中国内地（北京）的 API Key 并选择生图模型。 |
-| Cloudinary | 转存飞书图片，并在确认插入正文插图时取得可发表的 HTTPS 地址 | 在「设置 → 图片图床」填写 Cloud Name、API Key 和 API Secret。 |
+| Cloudinary | 转存飞书图片、上传本地图片，并在确认插入正文插图时取得可发表的 HTTPS 地址 | 在「设置 → 图片图床」填写 Cloud Name、API Key 和 API Secret。 |
 
-导入飞书 Markdown 后，图片会在后台转存，成功后正文使用 Cloudinary 的可访问地址。如果失败，可以在稿面重试。飞书链接过期时，请重新从飞书复制 Markdown。
+导入飞书 Markdown 后，图片会在后台转存，成功后正文使用 Cloudinary 的可访问地址。如果失败，可以在稿面重试。飞书链接过期时，请重新从飞书复制 Markdown。编辑正文时也可直接粘贴剪贴板图片，或在「插入 → 图片与图注 / 长图卡」中选择本地 PNG、JPEG、GIF、WebP（不超过 10 MB）；确认插入后上传到 Cloudinary，再写入普通 Markdown 图片。
 
 朱雀 API 的分类置信度和 PDF 报告得分分别显示，两者含义不同，不直接比较。PDF 有完整片段汇总表时，人工、疑似 AI 和 AI 的总体占比按片段比例计算并明确标注。API 按原文匹配段落；标准 PDF 按片段原文直接匹配，无法直接解析的版式才由模型辅助，以报告原文为准。重复的开头语等内容，可在设置里加入检测时排除的固定句。
 

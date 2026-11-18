@@ -6,7 +6,7 @@ import { readFile } from 'node:fs/promises'
 import { defaultSelection, listModels, modelInfo, modelOverride, modelStatus, setModelOverride, skillSources } from './ai.js'
 import { BANNER_CHOICES, BANNER_STYLES, DEFAULT_BANNER } from './banner.js'
 import { blockKind, clearSchedule, correctPublishedAt, createArticle, fixPlan, HOOK_IDS, isCheckable, listMeta, markPublished, newId, revisionChanges, setSchedule, snapshot, splitMarkdown, toMarkdown, touch, undo, unpublish } from './article.js'
-import { transferFeishuImages, uploadInlineImage } from './cloudinary.js'
+import { MAX_LOCAL_IMAGE, transferFeishuImages, uploadInlineImage, uploadLocalImage } from './cloudinary.js'
 import { feishuImageUrls, replaceFeishuImages } from './markdown-images.js'
 import { applyMarkdownReimport, planMarkdownReimport } from './markdown-reimport.js'
 import { generateInlineImage, readInlineAsset, readInlineImage, removeInlineImages, removeOrphanInlineImages, saveInlineImage } from './inline-assets.js'
@@ -542,6 +542,15 @@ export async function route(deps, req, res) {
     const text = await pdfToText(await readBuffer(req, MAX_PDF))
     pipeline.report(article.id, text)
     return ok()
+  }
+
+  if (path === 'images/upload') {
+    const article = mustFind(await store.read(), url.searchParams.get('id'))
+    if (article.archivedAt) return json(res, 409, { error: '归档稿件不能上传图片，请先恢复。' })
+    const image = await readBuffer(req, MAX_LOCAL_IMAGE)
+    const settings = await readSettings(store.root)
+    const publicUrl = await uploadLocalImage(image, settings.cloudinary, deps.fetchImpl)
+    return json(res, 200, { url: publicUrl })
   }
 
   if (path === 'insights/import') {

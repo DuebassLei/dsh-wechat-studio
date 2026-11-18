@@ -460,8 +460,8 @@ function Annotation({ block, job }) {
   const label = check.level === 'ai' ? 'AI 特征' : '疑似 AI'
   const source = check.source === 'api' ? 'API' : 'PDF'
   const score = check.source === 'api'
-    ? `置信度 ${Math.round(check.score * 100)}%`
-    : `片段 AIGC ${check.score}`
+    ? `分类置信度 ${Math.round(check.score * 100)}%`
+    : `报告得分 ${check.score}`
   return (
     <div className="ws-note is-flag">
       <p className="ws-note-title">朱雀 {source}：{label}<span className="ws-score">{score}</span></p>
@@ -1025,8 +1025,8 @@ function QualityPane({ article, ready, reviewTarget, onReviewJump }) {
   const zhuque = article.zhuque ?? { round: 0 }
   const overall = zhuque.overall && [['人工', zhuque.overall.human], ['疑似', zhuque.overall.suspect], ['AI', zhuque.overall.ai]].filter(([, value]) => value !== null && value !== undefined)
   const metricNote = zhuque.source === 'api'
-    ? 'API 置信度与 PDF 片段 AIGC 含义不同，不直接比较。'
-    : `${zhuque.overallDerived ? '总体占比按 PDF 片段计算；' : ''}片段 AIGC 应用于该片段覆盖的段落，不与 API 置信度直接比较。`
+    ? 'API 分类置信度与 PDF 报告得分含义不同，不直接比较。'
+    : `${zhuque.overallDerived ? '总体占比按 PDF 片段计算；' : ''}报告得分是所属片段的分数，不与 API 分类置信度直接比较。`
   const drop = event => {
     event.preventDefault()
     setOver(false)

@@ -8,7 +8,7 @@ import { cleanMarkdown, extractJson, listModels, loadSkill, modelInfo, setModelO
 import { applyOps, blockKind, createArticle, fixGroups, fixPlan, isCheckable, revisionChanges, snapshot, splitMarkdown, toMarkdown, undo } from '../src/article.js'
 import { checkBanner, detectionText, renderLayout } from '../src/layout.js'
 import { bannerGuide, normalizeSpec } from '../src/banner.js'
-import { markBlocks, pdfToText, reportOverall } from '../src/report.js'
+import { applyReport, markBlocks, parseReportSegments, pdfToText, reportOverall } from '../src/report.js'
 import { Pipeline } from '../src/pipeline.js'
 import { readInlineImage, saveInlineImage } from '../src/inline-assets.js'
 import { Store } from '../src/store.js'
@@ -199,6 +199,68 @@ test('PDF 总体占比：表格不完整时不猜，分类边界与报告一致'
   assert.deepEqual(reportOverall(`1 片段1 50% 100 0.5
 2 片段2 50% 100 0.99`), { human: 0, suspect: 50, ai: 50 })
   assert.equal(reportOverall('没有片段汇总表'), null)
+})
+
+function reportContext(reply) {
+  const llm = { prepareCall: async () => ({ config: {}, async *stream({ messages }) { yield { type: 'text-delta', text: reply(messages[0].content[0].text) }; yield { type: 'finish', reason: { kind: 'stop' } } } }) }
+  const services = { llm, agentDefaultModel: { currentSelection: () => ({ provider: 'p', model: 'm' }) } }
+  return { get: name => services[name] }
+}
+
+function reportArticle() {
+  return createArticle({ markdown: Array.from({ length: 45 }, (_, index) => `第 ${index + 1} 段正文，写得足够长，用来验证长报告的段落映射。`).join('\n\n') })
+}
+
+test('PDF 段落映射：从片段详情直接匹配原文，不调用模型', async () => {
+  const first = 'Claude Code 靠 CLAUDE.md 存规则，这段正文写得足够长，用来验证报告匹配。'
+  const second = '我第一反应是这和我每天处理的问题一样，这段正文同样足够长。'
+  const report = `${REPORT_SUMMARY}
+NO. 1 片段1 AIGC值 0.4780
+${first.replace('CLAUDE.md', 'CLAUDE\\.md')}
+11/18/26, 10:14 AM 朱雀AI生成检测报告单_1794968059828
+https://matrix.tencent.com/ai-detect/ai_gen_txt 1/8
+NO. 2 片段2 AIGC值 0.7707
+${second}`
+  const segments = parseReportSegments(report)
+  assert.equal(segments.length, 2)
+  assert.deepEqual(segments.map(segment => segment.label), [0, 2])
+  const article = createArticle({ markdown: `${first}\n\n${second}` })
+  const result = await applyReport(reportContext(() => { throw new Error('标准 PDF 不应调用模型') }), article, report)
+  assert.equal(result.flagged, 1)
+  assert.equal(result.passed, 1)
+  assert.equal(article.blocks[0].check.status, 'pass')
+  assert.equal(article.blocks[1].check.score, 0.77)
+})
+
+test('PDF 段落映射：完整输出无效时按 20 段分批重试并合并结果', async () => {
+  let calls = 0
+  const ctx = reportContext(user => {
+    calls += 1
+    if (calls === 1) return '{"overall":null,"segments":['
+    const block = Number(user.match(/【(\d+)】/)?.[1])
+    return JSON.stringify({ overall: null, segments: [{ block, score: 0.97 }] })
+  })
+  const article = reportArticle()
+  const result = await applyReport(ctx, article, REPORT_SUMMARY)
+  assert.equal(calls, 4)
+  assert.equal(result.flagged, 3)
+  assert.equal(result.passed, 42)
+  assert.deepEqual(article.blocks.filter(block => block.check?.status === 'flag').map(block => article.blocks.indexOf(block) + 1), [1, 21, 41])
+  assert.deepEqual(article.zhuque.overall, { human: 0, suspect: 50, ai: 50 })
+})
+
+test('PDF 段落映射：分批仍无效时明确报模型错误且不写入检测结果', async () => {
+  let calls = 0
+  const ctx = reportContext(user => {
+    calls += 1
+    if (calls === 2) return JSON.stringify({ overall: null, segments: [{ block: 1, score: 0.97 }] })
+    return '{"overall":null,"segments":['
+  })
+  const article = reportArticle()
+  await assert.rejects(applyReport(ctx, article, REPORT_SUMMARY), error => error.status === 422 && /第 2\/3 批/.test(error.message) && /模型/.test(error.message))
+  assert.equal(calls, 3)
+  assert.equal(article.zhuque.round, 0)
+  assert.ok(article.blocks.every(block => block.check === null))
 })
 
 test('流水线：写正文 → 出标题 → 对话改稿 → 读报告 → 改标红段', async () => {

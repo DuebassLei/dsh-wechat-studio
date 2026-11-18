@@ -1,11 +1,12 @@
-// 朱雀报告：把下载的 PDF 取成文字，再对回文章里的段落。
-// 报告的版式没有公开规范，所以对段落这一步交给模型，结果只收白名单字段并校验段号。
+// 朱雀报告：把下载的 PDF 取成文字，优先按片段原文对回文章段落。
+// 标准详情区直接匹配；无法解析的版式再由模型辅助，结果只收白名单字段并校验段号。
 import { execFile } from 'node:child_process'
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { callModel, extractJson } from './ai.js'
 import { isCheckable, plainOf } from './article.js'
+import { mapSegments } from './zhuque.js'
 
 const PDFTOTEXT = ['pdftotext', '/opt/homebrew/bin/pdftotext', '/usr/local/bin/pdftotext']
 
@@ -60,6 +61,23 @@ export function reportOverall(reportText) {
   return Object.fromEntries(Object.entries(totals).map(([key, value]) => [key, Math.round(value * 10) / 10]))
 }
 
+export function parseReportSegments(reportText) {
+  const text = String(reportText).normalize('NFKC')
+  const markers = [...text.matchAll(/NO\.\s*\d+\s+片段\s*\d+\s+AIGC值\s+(0(?:\.\d+)?|1(?:\.0+)?)/g)]
+  return markers.map((marker, index) => {
+    const conf = Number(marker[1])
+    const content = text.slice(marker.index + marker[0].length, markers[index + 1]?.index ?? text.length)
+    const cleaned = content.split(/\r?\n/).filter(line => {
+      const value = line.trim()
+      if (/^\d{1,2}\/\d{1,2}\/\d{2,4},?\s+\d{1,2}:\d{2}/.test(value)) return false
+      if (/^https:\/\/matrix\.tencent\.com\/ai-detect\/ai_gen_txt(?:\s+\d+\/\d+)?$/.test(value)) return false
+      if (/^朱雀AI生成检测报告单(?:_\d+)?$/.test(value)) return false
+      return true
+    }).join('\n').replace(/\\([\\`*_{}\[\]()#+\-.!|>~])/g, '$1').trim()
+    return { text: cleaned, conf, label: conf >= 0.99 ? 1 : conf >= 0.5 ? 2 : 0 }
+  }).filter(segment => segment.text)
+}
+
 const SYSTEM = `你在帮作者核对一份「朱雀 AI 检测」报告。报告把文章切成若干片段，每个片段有一个 AIGC 值：
 0–0.5 是人工特征，0.5–0.99 是疑似 AI，0.99–1 是 AI 特征。片段的切分位置和文章的段落不一定对齐。
 
@@ -72,19 +90,42 @@ const SYSTEM = `你在帮作者核对一份「朱雀 AI 检测」报告。报告
 只输出 JSON，不要解释：
 {"overall":{"human":数字或null,"suspect":数字或null,"ai":数字或null},"segments":[{"block":段落编号,"score":0到1的小数}]}`
 
+async function requestReportMapping(ctx, reportText, rows) {
+  const body = rows.join('\n\n')
+  const raw = await callModel(ctx, { system: SYSTEM, user: `# 朱雀报告\n${reportText.slice(0, 60000)}\n\n# 文章段落\n${body}`, task: 'report', maxTokens: 4000 })
+  const parsed = extractJson(raw)
+  return parsed && Array.isArray(parsed.segments) ? parsed : null
+}
+
 /**
- * 让模型把报告片段对回段落，然后给每个可检测的段落打上「标红」或「通过」。
+ * 把报告片段对回段落，然后给每个可检测的段落打上「标红」或「通过」。
  * @param {object} ctx - Cordis 上下文。
  * @param {object} article - 文章，会被就地修改。
  * @param {string} reportText - 报告文字。
  * @returns {Promise<{flagged: number, passed: number, overall: object|null}>} 结果统计。
  */
 export async function applyReport(ctx, article, reportText) {
-  const body = article.blocks.map((block, index) => (isCheckable(block.text) ? `【${index + 1}】${plainOf(block.text)}` : null)).filter(Boolean).join('\n\n')
-  if (!body) throw Object.assign(new Error('这篇文章还没有可以检测的正文段落。'), { status: 400 })
-  const raw = await callModel(ctx, { system: SYSTEM, user: `# 朱雀报告\n${reportText.slice(0, 60000)}\n\n# 文章段落\n${body}`, task: 'report', maxTokens: 4000 })
-  const parsed = extractJson(raw)
-  if (!parsed || !Array.isArray(parsed.segments)) throw Object.assign(new Error('没能读懂这份报告。请确认它是朱雀的检测报告，并且检测的是这篇文章。'), { status: 422 })
+  const rows = article.blocks.map((block, index) => (isCheckable(block.text) ? `【${index + 1}】${plainOf(block.text)}` : null)).filter(Boolean)
+  if (!rows.length) throw Object.assign(new Error('这篇文章还没有可以检测的正文段落。'), { status: 400 })
+  let parsed = null
+  const direct = parseReportSegments(reportText)
+  if (direct.length) {
+    const mapped = mapSegments(article, direct)
+    if (mapped.covered.size) parsed = mapped
+  }
+  if (!parsed) parsed = await requestReportMapping(ctx, reportText, rows)
+  if (!parsed) {
+    const batchCount = Math.ceil(rows.length / 20)
+    const segments = []
+    let overall = null
+    for (let index = 0; index < rows.length; index += 20) {
+      const batch = await requestReportMapping(ctx, reportText, rows.slice(index, index + 20))
+      if (!batch) throw Object.assign(new Error(`模型返回的段落映射格式无效，分批处理第 ${index / 20 + 1}/${batchCount} 批仍失败，请重试。`), { status: 422 })
+      segments.push(...batch.segments)
+      if (!overall && batch.overall && typeof batch.overall === 'object') overall = batch.overall
+    }
+    parsed = { segments, overall }
+  }
   const derived = reportOverall(reportText)
   return markBlocks(article, {
     ...parsed,

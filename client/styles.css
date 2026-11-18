@@ -333,7 +333,7 @@ body[data-ds-dark-theme] .ws-root { color-scheme: dark; --ok: #6fcb9c; --bad: #f
 .ws-revision-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 12px 20px; background: var(--panel); border-bottom: 1px solid var(--line); }
 .ws-revision-tools label { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; max-width: 100%; }
 .ws-revision-tools select { width: min(420px, 100%); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; background: var(--card); color: var(--ink); font: inherit; }
-.ws-revision-rows { display: grid; gap: 12px; overflow: auto; min-height: 0; padding: 14px 20px 20px; }
+.ws-revision-rows { display: grid; grid-auto-rows: max-content; align-content: start; gap: 12px; overflow: auto; min-height: 0; padding: 14px 20px 20px; }
 .ws-revision-rows:focus-visible { outline-offset: -2px; }
 .ws-revision-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
 .ws-revision-kind { grid-column: 1 / -1; padding: 5px 12px; background: var(--panel); border-bottom: 1px solid var(--line); font-weight: 650; font-size: 12px; }

@@ -27,7 +27,7 @@ OVERALL COMPOSITION:
 - Composition reads as one fast diagonal flow from bottom-left to top-right
 
 SUBJECT (RIGHT SIDE):
-- A 30-something Asian male, looking like a senior software engineer turned content creator
+- An Asian male matching the reference image, looking like a senior software engineer turned content creator; preserve the reference person's apparent age and facial features
 - LARGE HEAD-AND-SHOULDERS close-up (bigger crop than a half-body shot — the face is BIG in frame, head nearly touching the top edge, face and upper chest fill the right side), facing the camera directly with quiet confidence
 - Wearing an OVERSIZED, RELAXED-FIT, heavyweight waffle-knit short-sleeve polo shirt in Midnight Green color (#004953, deep dark green with subtle teal undertone)
 

@@ -427,6 +427,25 @@ test('换标题：把候选的钩子带到稿件上', async () => {
   assert.equal(saved.hook, 'A')
 })
 
+test('手动换标题：保存候选以外的标题并支持撤销', async () => {
+  const { route } = await import('../src/host.js')
+  const store = new Store(mkdtempSync(join(tmpdir(), 'ws-ins-custom-title-')))
+  const article = createArticle({ markdown: '# 旧标题\n\n正文' })
+  article.titles = [{ text: '候选甲', hook: 'C' }]
+  article.hook = 'C'
+  await store.update(s => { s.articles.push(article); s.currentId = article.id })
+  const deps = { ...insDeps(store), pipeline: { job: () => null }, route }
+  await insRequest(deps, 'title/pick', { post: { id: article.id, text: '  我自己定的标题  ' } })
+  let saved = (await store.read()).articles[0]
+  assert.equal(saved.title, '我自己定的标题')
+  assert.equal(saved.hook, null)
+  assert.equal(saved.history.at(-1).label, '换标题')
+  await insRequest(deps, 'undo', { post: { id: article.id } })
+  saved = (await store.read()).articles[0]
+  assert.equal(saved.title, '旧标题')
+  assert.equal(saved.hook, 'C')
+})
+
 test('normTitle：NFKC 与空白归一', () => {
   assert.equal(normTitle('ＡＢＣ  标题'), 'ABC 标题')
   assert.equal(HOOK_IDS.includes('C'), true)

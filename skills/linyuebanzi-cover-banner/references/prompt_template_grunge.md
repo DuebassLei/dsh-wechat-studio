@@ -69,7 +69,7 @@ LAYOUT (left to right):
 - Right 42%: the person, a black terminal menu panel
 
 SUBJECT (RIGHT SIDE):
-- A 30-something Asian male, senior software engineer turned content creator, thin black wire-frame glasses, slightly messy short black hair
+- An Asian male, senior software engineer turned content creator, matching the reference image; preserve the reference person's facial features, hair color, hairstyle and glasses
 - Wearing {{服装,从下方服装选项复制一段,默认 tee}}
 - Real photographic look with light film grain; the face stays sharp and recognizable
 - Half body, positioned in the right part of the canvas, body slightly turned, head near the top of the canvas

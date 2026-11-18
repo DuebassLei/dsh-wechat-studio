@@ -57,6 +57,13 @@ test('整篇排版：错误示例退回代码框并给出明确自查提示', as
   assert.match(articleBody(page), /background:#0B0B0C/)
 })
 
+test('整篇排版：自查报告允许长视频标题换行', async () => {
+  const title = '动图：从导入 Markdown 到排版复制的完整流程 workflow.gif'
+  const { html: page } = await renderLayout(`# 长标题\n\n[${title}]\n`)
+  assert.ok(page.includes(title))
+  assert.match(page, /#review-panel button\{white-space:normal;overflow-wrap:anywhere\}/)
+})
+
 test('单卡渲染：普通代码框回退视为失败', async () => {
   await assert.rejects(
     renderSvgCard({ kind: 'svg-table', title: '空表格', lines: ['| --- | --- |'] }, { style: 'neo', theme: 'blue' }),

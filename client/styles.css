@@ -154,6 +154,12 @@ body[data-ds-dark-theme] .ws-root { color-scheme: dark; --ok: #6fcb9c; --bad: #f
 .ws-sheet:hover .ws-edge-edit:not(:disabled) span:first-child, .ws-edge-edit:focus-visible span:first-child { display: none; }
 .ws-sheet:hover .ws-edge-edit:not(:disabled) span + span, .ws-edge-edit:focus-visible span + span { display: inline; }
 .ws-title { font-size: 22px; line-height: 31px; font-weight: 700; padding-bottom: 6px; }
+.ws-title-button { display: block; width: 100%; border-radius: 4px; cursor: text; overflow-wrap: anywhere; }
+.ws-title-button:hover:not(:disabled) { background: rgb(0 0 0 / .035); }
+.ws-title-button:disabled { opacity: 1; }
+.ws-title-editor { margin: 0 0 8px; }
+.ws-title-input { display: block; width: 100%; min-height: 62px; padding: 4px 6px; border: 0; border-radius: 4px; background: transparent; font-size: 22px; line-height: 31px; font-weight: 700; resize: none; overflow: hidden; }
+.ws-root .ws-title-input:focus-visible { outline: 0; }
 .ws-block { display: block; width: 100%; border-radius: 4px; cursor: text; }
 .ws-block:hover:not(:disabled) { background: rgb(0 0 0 / .035); }
 .ws-block:disabled { opacity: 1; }

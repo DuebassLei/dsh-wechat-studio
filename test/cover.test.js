@@ -7,7 +7,7 @@ import { test } from 'node:test'
 import { deflateSync } from 'node:zlib'
 import { createArticle } from '../src/article.js'
 import { COVER_SKILL_DIR } from '../src/ai.js'
-import { coverDownloadName, generateBailianCover, readCover, saveCover } from '../src/cover.js'
+import { coverDownloadName, generateArkCover, generateBailianCover, readCover, saveCover } from '../src/cover.js'
 import { BAILIAN_SIZES, modelsFor, providerFormats } from '../src/cover-options.js'
 import { COVER_STYLES } from '../src/cover-styles.js'
 import { PNG } from 'pngjs'
@@ -109,7 +109,6 @@ test('封面：不传参考图时只发提示词，不带任何默认人物图',
     arkBody = JSON.parse(init.body)
     return { ok: true, status: 200, json: async () => ({ data: [{ b64_json: png.toString('base64') }] }) }
   }
-  const { generateArkCover } = await import('../src/cover.js')
   await generateArkCover('p', { apiKey: 'k', model: 'm', resolution: '2K', format: 'png' }, arkFetch)
   assert.ok(!('image' in arkBody))
 })
@@ -289,6 +288,30 @@ test('封面路由：火山方舟仍走原接口', async () => {
   assert.equal(current.cover.provider, 'ark')
 })
 
+test('封面路由：火山方舟详细错误写入生成记录，并清理敏感信息', async () => {
+  const apiKey = 'sk-ark-secret'
+  const fetchImpl = async () => Response.json({
+    error: { code: 'InvalidParameter', message: `提示词参数无效\n请检查请求，密钥 ${apiKey} 不应写入历史。${'补'.repeat(700)}` },
+  }, { status: 400, headers: { 'x-request-id': 'req-ark-123' } })
+  const { article, request } = await coverHost({ provider: 'ark', key: apiKey, fetchImpl, llm: await coverLLM() })
+  await request('cover/generate', { id: article.id, style: 'classic', resolution: '2K', count: 1, format: 'png' })
+  const current = await waitCover(request)
+  const error = current.coverRuns.at(-1).errors[0]
+  assert.match(error, /HTTP 400/)
+  assert.match(error, /InvalidParameter/)
+  assert.match(error, /提示词参数无效/)
+  assert.match(error, /req-ark-123/)
+  assert.ok(!error.includes(apiKey))
+  assert.ok(!error.includes('\n'))
+  assert.ok(error.length < 700)
+  assert.equal(current.coverError, error)
+})
+
+test('火山方舟封面：无法读取详细错误时保留通用提示', async () => {
+  const opts = { apiKey: 'k', model: 'm', resolution: '2K', format: 'png' }
+  await assert.rejects(generateArkCover('p', opts, jsonReply(400, {})), /HTTP 400.*请重试/)
+  await assert.rejects(generateArkCover('p', opts, jsonReply(400, { error: { code: 'ModelNotOpen', message: 'provider detail' } })), /尚未开通/)
+})
 test('封面模板：每种风格都有带占位符的提示词代码块', async () => {
   for (const style of COVER_STYLES) {
     const templateName = style.id === 'classic' ? 'prompt_template.md' : `prompt_template_${style.id}.md`
@@ -296,6 +319,23 @@ test('封面模板：每种风格都有带占位符的提示词代码块', async
     const body = template.match(/^```[^\n]*\n([\s\S]*?)^```[ \t]*$/m)?.[1]?.trim()
     assert.ok(body, `${style.id} 模板缺少提示词代码块`)
     assert.ok([...body.matchAll(/\{\{([^{}]+)\}\}/g)].length > 0, `${style.id} 模板没有占位符`)
+  }
+})
+
+test('颗粒海报：人物外观以参考图为准，不固定年龄和发色', async () => {
+  const template = await readFile(join(COVER_SKILL_DIR, 'references/prompt_template_grunge.md'), 'utf8')
+  assert.ok(!template.includes('30-something'))
+  assert.ok(!template.includes('short black hair'))
+  assert.match(template, /matching the reference image/)
+  assert.match(template, /facial features, hair color, hairstyle and glasses/)
+})
+
+test('其他真人海报：不指定固定年龄，外观年龄以参考图为准', async () => {
+  for (const name of ['prompt_template.md', 'prompt_template_editorial.md', 'prompt_template_campaign.md', 'prompt_template_kinetic.md']) {
+    const template = await readFile(join(COVER_SKILL_DIR, `references/${name}`), 'utf8')
+    assert.ok(!template.includes('30-something'), name)
+    assert.match(template, /matching the reference image/, name)
+    assert.match(template, /apparent age and facial features/, name)
   }
 })
 

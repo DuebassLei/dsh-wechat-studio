@@ -33,7 +33,7 @@ OVERALL COMPOSITION:
 - Letter-spaced uppercase English capsule micro-labels scattered in the grid cells as editorial furniture
 
 SUBJECT (RIGHT SIDE):
-- A 30-something Asian male, looking like a senior software engineer turned content creator
+- An Asian male matching the reference image, looking like a senior software engineer turned content creator; preserve the reference person's apparent age and facial features
 - Wearing an OVERSIZED, RELAXED-FIT, heavyweight waffle-knit short-sleeve polo shirt in Midnight Green color (#004953, deep dark green with subtle teal undertone)
 
   CRITICAL FIT DETAILS — this is NOT a standard fitted polo:

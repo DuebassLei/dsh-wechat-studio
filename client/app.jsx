@@ -540,6 +540,73 @@ function Annotation({ block, job }) {
   )
 }
 
+function PaperTitle({ article, busy }) {
+  const [editing, setEditing] = React.useState(false)
+  const [draft, setDraft] = React.useState(article.title)
+  const [saving, setSaving] = React.useState(false)
+  const ref = React.useRef(null)
+  const lock = React.useRef(false)
+  const value = draft.trim()
+  const changed = value !== article.title
+  React.useLayoutEffect(() => {
+    if (!editing) return
+    const el = ref.current
+    if (!el) return
+    const fit = () => {
+      el.style.height = '0px'
+      el.style.height = `${el.scrollHeight}px`
+    }
+    fit()
+    const observer = new ResizeObserver(entries => {
+      const width = entries[0].contentRect.width
+      if (width !== lastWidth) { lastWidth = width; fit() }
+    })
+    let lastWidth
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [draft, editing])
+  React.useEffect(() => {
+    if (editing) ref.current?.focus({ preventScroll: true })
+  }, [editing])
+  const start = () => {
+    setDraft(article.title)
+    setEditing(true)
+  }
+  const cancel = () => {
+    if (lock.current) return
+    setDraft(article.title)
+    setEditing(false)
+  }
+  const save = async () => {
+    if (lock.current || busy || !value || !changed) return
+    lock.current = true
+    setSaving(true)
+    const ok = await act('title/pick', { text: value })
+    lock.current = false
+    setSaving(false)
+    if (ok) setEditing(false)
+  }
+  if (editing) return (
+    <div className="ws-editor ws-title-editor" onKeyDown={event => {
+      if (event.nativeEvent.isComposing || event.keyCode === 229) return
+      if (event.key === 'Escape') { event.preventDefault(); cancel() }
+      if (event.key === 'Enter') { event.preventDefault(); void save() }
+    }}>
+      <textarea ref={ref} className="ws-title-input" aria-label="编辑文章标题" rows={2} maxLength={80}
+        value={draft} readOnly={saving} onChange={event => setDraft(event.target.value.replace(/\s*\r?\n\s*/g, ' '))} />
+      <div className="ws-editor-footer">
+        <span role="status">{saving ? '正在保存…' : !value ? '标题不能为空' : `${value.length} / 80 字 · Enter 保存，Esc 取消`}</span>
+        <div>
+          <button type="button" className="ws-btn" disabled={saving} onClick={cancel}>取消</button>
+          <button type="button" className="ws-btn is-primary" disabled={saving || busy || !value || !changed} onClick={() => void save()}>保存标题</button>
+        </div>
+      </div>
+    </div>
+  )
+  return <h1 className="ws-title"><button type="button" className="ws-title-button" disabled={busy}
+    title="点击编辑标题" onClick={start}>{article.title || '还没有标题'}</button></h1>
+}
+
 function Paper({ article, reviewTarget }) {
   const editing = useStudio(s => s.editing)
   const job = article.job
@@ -558,7 +625,7 @@ function Paper({ article, reviewTarget }) {
   return (
     <div className="ws-sheet-wrap is-neo">
       <div className="ws-row">
-        <div className="ws-sheet is-first"><h1 className="ws-title">{article.title || '还没有标题'}</h1></div>
+        <div className="ws-sheet is-first"><PaperTitle key={article.id} article={article} busy={Boolean(job || pending)} /></div>
         <div className="ws-margin" />
       </div>
       {article.blocks.map((block, index) => {

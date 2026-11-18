@@ -1156,6 +1156,7 @@ button.subtle,.actions summary{font:inherit;font-size:13px;padding:8px 10px;bord
 .actions #review-panel{width:min(380px,calc(100vw - 24px));white-space:normal;padding:12px}
 #review-panel h3{font-size:13px;margin:8px 0 4px}
 #review-panel ul{margin:0;padding-left:20px;font-size:13px;line-height:1.6}
+#review-panel button{white-space:normal;overflow-wrap:anywhere}
 #review-panel .go{margin-top:10px}
 #review-panel button[hidden]{display:none}
 #review-stats{font-size:12px;color:#555;margin:8px 0 0}

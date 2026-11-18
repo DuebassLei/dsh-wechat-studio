@@ -7,6 +7,13 @@ export { coverPrompt } from './cover-prompt.js'
 
 const MAX_IMAGE = 24 * 1024 * 1024
 
+function providerDetail(value, limit, apiKey) {
+  if (typeof value !== 'string') return ''
+  let text = value.replace(/\s+/g, ' ').trim()
+  if (apiKey) text = text.split(apiKey).join('[已隐藏]')
+  return text.replace(/Bearer\s+\S+/gi, 'Bearer [已隐藏]').slice(0, limit)
+}
+
 export async function generateArkCover(prompt, { apiKey, model, resolution, format, referenceImage = null, subject = '封面' }, fetchImpl = fetch) {
   const res = await fetchImpl('https://ark.cn-beijing.volces.com/api/v3/images/generations', {
     method: 'POST', redirect: 'error', signal: AbortSignal.timeout(180_000),
@@ -17,12 +24,20 @@ export async function generateArkCover(prompt, { apiKey, model, resolution, form
     }),
   })
   if (!res.ok) {
-    const code = (await res.json().catch(() => null))?.error?.code
-    if (code === 'ModelNotOpen') throw new Error('当前火山方舟账号尚未开通 Doubao Seedream 5.5，请在方舟控制台的「开通管理」中开通。')
-    if (code === 'InvalidEndpointOrModel.NotFound') throw new Error('火山方舟找不到 Seedream 5.5 或当前 API Key 无权调用，请检查项目和模型权限。')
-    if (code === 'InvalidEndpointOrModel.ModelIDAccessDisabled') throw new Error('当前火山方舟账号不允许通过模型 ID 调用，需要使用有权限的推理接入点。')
-    if (res.status === 401 || res.status === 403) throw new Error('火山方舟鉴权失败，请检查 API Key 和模型权限。')
-    throw new Error(`火山方舟生成失败（HTTP ${res.status}），请重试。`)
+    const body = await res.json().catch(() => null)
+    const code = providerDetail(body?.error?.code, 120, apiKey)
+    const message = providerDetail(body?.error?.message, 400, apiKey)
+    const requestId = [
+      body?.request_id, body?.error?.request_id,
+      res.headers?.get?.('x-request-id'), res.headers?.get?.('x-tt-logid'),
+    ].map(value => providerDetail(value, 120, apiKey)).find(Boolean) ?? ''
+    const requestSuffix = requestId ? ` 请求 ID：${requestId}` : ''
+    if (code === 'ModelNotOpen') throw new Error('当前火山方舟账号尚未开通 Doubao Seedream 5.5，请在方舟控制台的「开通管理」中开通。' + requestSuffix)
+    if (code === 'InvalidEndpointOrModel.NotFound') throw new Error('火山方舟找不到 Seedream 5.5 或当前 API Key 无权调用，请检查项目和模型权限。' + requestSuffix)
+    if (code === 'InvalidEndpointOrModel.ModelIDAccessDisabled') throw new Error('当前火山方舟账号不允许通过模型 ID 调用，需要使用有权限的推理接入点。' + requestSuffix)
+    if (res.status === 401 || res.status === 403) throw new Error('火山方舟鉴权失败，请检查 API Key 和模型权限。' + requestSuffix)
+    const details = [code && `错误码：${code}`, message && `原因：${message}`, requestId && `请求 ID：${requestId}`].filter(Boolean).join('；')
+    throw new Error(`火山方舟生成失败（HTTP ${res.status}）${details ? `：${details}` : '，请重试。'}`)
   }
   const { data } = await res.json()
   const encoded = data?.[0]?.b64_json

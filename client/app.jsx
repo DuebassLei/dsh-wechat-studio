@@ -458,9 +458,13 @@ function Annotation({ block, job }) {
   }
   if (check.status !== 'flag') return compare
   const label = check.level === 'ai' ? 'AI 特征' : '疑似 AI'
+  const source = check.source === 'api' ? 'API' : 'PDF'
+  const score = check.source === 'api'
+    ? `置信度 ${Math.round(check.score * 100)}%`
+    : `片段 AIGC ${check.score}`
   return (
     <div className="ws-note is-flag">
-      <p className="ws-note-title">朱雀：{label}<span className="ws-score">{check.source === 'api' ? `置信度 ${Math.round(check.score * 100)}%` : `AIGC ${check.score}`}</span></p>
+      <p className="ws-note-title">朱雀 {source}：{label}<span className="ws-score">{score}</span></p>
       {check.worse ? <p className="ws-note-text">改完分数反而升了，建议退回上一版的写法。</p>
         : check.fixes >= 2 ? <p className="ws-note-text">这一段已经改过两轮。建议你用自己平时说话的方式重说一遍，点正文就能直接改。</p>
         : check.source !== 'api' && check.score < 0.6 ? <p className="ws-note-text">0.5–0.6 是噪声带，每次重测都会浮动，可以不改。</p> : null}
@@ -1020,6 +1024,9 @@ function QualityPane({ article, ready, reviewTarget, onReviewJump }) {
   const busy = Boolean(article.job)
   const zhuque = article.zhuque ?? { round: 0 }
   const overall = zhuque.overall && [['人工', zhuque.overall.human], ['疑似', zhuque.overall.suspect], ['AI', zhuque.overall.ai]].filter(([, value]) => value !== null && value !== undefined)
+  const metricNote = zhuque.source === 'api'
+    ? 'API 置信度与 PDF 片段 AIGC 含义不同，不直接比较。'
+    : `${zhuque.overallDerived ? '总体占比按 PDF 片段计算；' : ''}片段 AIGC 应用于该片段覆盖的段落，不与 API 置信度直接比较。`
   const drop = event => {
     event.preventDefault()
     setOver(false)
@@ -1036,6 +1043,7 @@ function QualityPane({ article, ready, reviewTarget, onReviewJump }) {
         <p className="ws-hint">设置朱雀 API Key 后可以一键检测，不用来回复制和下载。<button type="button" className="ws-link" onClick={() => setState({ dialog: 'settings' })}>去设置</button></p>
       )}
       {overall?.length ? <p className="ws-overall">{overall.map(([name, value]) => <span key={name}>{name} {value}%</span>)}</p> : null}
+      {zhuque.round ? <p className="ws-muted ws-small">{metricNote}</p> : null}
       <FixAll article={article} />
       <ReviewQueue article={article} target={reviewTarget} onJump={id => onReviewJump(id, true)} />
       <details className="ws-manual" open={!ready}>

@@ -233,8 +233,10 @@ test('流水线：写正文 → 出标题 → 对话改稿 → 读报告 → 改
   assert.match(saved.blocks[1].text, /对话改过/)
   assert.deepEqual(saved.chat.at(-1).receipts, ['改写第 2 段'])
 
-  await pipeline.report(article.id, '报告文字')
+  await pipeline.report(article.id, REPORT_SUMMARY)
   saved = (await store.read()).articles[0]
+  assert.deepEqual(saved.zhuque.overall, { human: 0, suspect: 50, ai: 50 })
+  assert.equal(saved.zhuque.overallDerived, true)
   assert.equal(saved.blocks[0].check.status, 'flag')
   assert.equal(saved.blocks[1].check.status, 'pass')
 

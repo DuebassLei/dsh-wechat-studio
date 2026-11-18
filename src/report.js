@@ -85,7 +85,12 @@ export async function applyReport(ctx, article, reportText) {
   const raw = await callModel(ctx, { system: SYSTEM, user: `# 朱雀报告\n${reportText.slice(0, 60000)}\n\n# 文章段落\n${body}`, task: 'report', maxTokens: 4000 })
   const parsed = extractJson(raw)
   if (!parsed || !Array.isArray(parsed.segments)) throw Object.assign(new Error('没能读懂这份报告。请确认它是朱雀的检测报告，并且检测的是这篇文章。'), { status: 422 })
-  return markBlocks(article, parsed)
+  const derived = reportOverall(reportText)
+  return markBlocks(article, {
+    ...parsed,
+    overall: derived ?? parsed.overall,
+    overallDerived: Boolean(derived),
+  })
 }
 
 const RANK = { suspect: 1, ai: 2 }
@@ -94,7 +99,7 @@ const heavier = (a, b) => RANK[a.level] > RANK[b.level] || (a.level === b.level 
 /**
  * 把一轮检测结果落到段落上：标红、通过，或者（对不上的）不下结论。
  * @param {object} article - 文章，会被就地修改。
- * @param {{segments: Array<{block: number, score: number, level?: string}>, covered?: Set<number>, overall?: object}} parsed -
+ * @param {{segments: Array<{block: number, score: number, level?: string}>, covered?: Set<number>, overall?: object, overallDerived?: boolean}} parsed -
  *   标红的段（段号 1 起）。没给 level 的按 AIGC 值算：≥0.5 疑似，≥0.99 AI。给了 covered 时，只有对上了的段才算通过。
  * @param {'pdf'|'api'} [source] - 结果来自报告 PDF 还是 API。两者的分数含义不同，界面上分开显示。
  */
@@ -135,7 +140,15 @@ export function markBlocks(article, parsed, source = 'pdf') {
   })
   const num = value => (Number.isFinite(Number(value)) && value !== null ? Number(value) : null)
   const overall = parsed.overall && typeof parsed.overall === 'object' ? { human: num(parsed.overall.human), suspect: num(parsed.overall.suspect), ai: num(parsed.overall.ai) } : null
-  article.zhuque = { round, lastAt: new Date().toISOString(), overall, flagged, passed, source }
+  article.zhuque = {
+    round,
+    lastAt: new Date().toISOString(),
+    overall,
+    overallDerived: parsed.overallDerived === true,
+    flagged,
+    passed,
+    source,
+  }
   article.updatedAt = article.zhuque.lastAt
   return { flagged, passed, unmatched, overall }
 }

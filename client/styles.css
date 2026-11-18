@@ -195,6 +195,7 @@ body[data-ds-dark-theme] .ws-root { color-scheme: dark; --ok: #6fcb9c; --bad: #f
 .ws-editor-tools > div, .ws-editor-footer > div { display: flex; gap: 4px; }
 .ws-editor .ws-btn { color: #363a44; background: #f7f7f8; border-color: #e2e3e6; padding: 3px 8px; }
 .ws-editor .ws-btn.is-primary { color: #fff; background: #242831; border-color: #242831; }
+.ws-editor .ws-btn.ws-delete-block { color: var(--bad); }
 .ws-editor-preview { min-height: 54px; }
 .ws-editor-preview > * + * { margin-top: 10px; }
 .ws-sheet u { text-decoration-color: var(--accent); text-decoration-thickness: 2px; text-underline-offset: .18em; }

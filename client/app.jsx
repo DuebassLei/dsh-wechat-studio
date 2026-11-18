@@ -387,10 +387,10 @@ function Editor({ articleId, block, number, sectionNumber, busy, nextId, onDone 
     onDone()
   }
   const save = async (remove = false, advance = false) => {
-    if (lock.current || busy || !changed || conflict || (empty && !remove)) return
+    if (lock.current || busy || (!changed && !remove) || conflict || (empty && !remove)) return
     lock.current = true
     setSaving(true)
-    const ok = await act('block/update', { id: articleId, blockId: block.id, text: draft.text, expectedText: draft.original })
+    const ok = await act('block/update', { id: articleId, blockId: block.id, text: remove ? '' : draft.text, expectedText: draft.original })
     lock.current = false
     if (ok) {
       trackParagraphDraft(articleId, block.id, null)
@@ -484,6 +484,7 @@ function Editor({ articleId, block, number, sectionNumber, busy, nextId, onDone 
         <span role="status">{saving ? '正在保存…' : storageFailed ? '本地暂存失败，退出前请保存正文' : conflict ? '正文已有新版本，当前修改仍保留。' : empty ? '清空后可手动删除这段' : changed ? '已在本机暂存，尚未写入正文' : '⌘ / Ctrl + Enter 保存'}</span>
         <div>
           {conflict ? <button type="button" className="ws-btn" onClick={() => copyText(draft.text, '已复制未保存的修改')}>复制修改</button> : null}
+          {!empty ? <button type="button" className="ws-btn ws-delete-block" title="删除当前段落，可通过顶部撤销恢复" disabled={saving || busy || conflict} onClick={() => void save(true)}>删除</button> : null}
           <button type="button" className="ws-btn" disabled={saving} onClick={cancel}>取消</button>
           {nextId && !empty ? <button type="button" className="ws-btn" title="⌘ / Ctrl + Shift + Enter" disabled={saving || busy || !changed || conflict}
             onClick={() => void save(false, true)}>保存并改下一段</button> : null}

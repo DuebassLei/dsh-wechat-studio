@@ -8,7 +8,7 @@ import { cleanMarkdown, extractJson, listModels, loadSkill, modelInfo, setModelO
 import { applyOps, blockKind, createArticle, fixGroups, fixPlan, isCheckable, revisionChanges, snapshot, splitMarkdown, toMarkdown, undo } from '../src/article.js'
 import { checkBanner, detectionText, renderLayout } from '../src/layout.js'
 import { bannerGuide, normalizeSpec } from '../src/banner.js'
-import { markBlocks, pdfToText } from '../src/report.js'
+import { markBlocks, pdfToText, reportOverall } from '../src/report.js'
 import { Pipeline } from '../src/pipeline.js'
 import { readInlineImage, saveInlineImage } from '../src/inline-assets.js'
 import { Store } from '../src/store.js'
@@ -165,6 +165,40 @@ test('PDF 取文字：pdftotext 和打包的 unpdf 都走得通', async () => {
   const { text } = await extractText(await getDocumentProxy(new Uint8Array(buffer)), { mergePages: true })
   assert.match(text, /0\.93/)
   await assert.rejects(pdfToText(Buffer.from('not a pdf')), /不是 PDF/)
+})
+
+const REPORT_SUMMARY = `序号 片段 占全文比例 占字符数 AIGC值
+1 片段1 50% 100 0.8233
+2 片段2 50% 100 0.9970`
+
+const REPORT_PDF_LAYOUT = `                 序号                  片段            占全文比例                      占字符数                AIGC值
+                 1                   片段1           28.16%                     1407                0.8233
+                 2                   片段2           12.11%                     605                 0.9970
+                 3                   片段3           15.81%                     790                 0.9698
+                 4                   片段4           43.93%                     2195                0.9988
+
+                  检测片段详情
+                     NO. 1 片段1 AIGC值 0.8233`
+
+const REPORT_PDF_UNPDF = `序号 ⽚段 占全⽂⽐例 占字符数 AIGC值
+1 ⽚段1 28.16% 1407 0.8233
+2 ⽚段2 12.11% 605 0.9970
+3 ⽚段3 15.81% 790 0.9698
+4 ⽚段4 43.93% 2195 0.9988`
+
+test('PDF 总体占比：按片段比例和 AIGC 阈值确定性汇总', () => {
+  assert.deepEqual(reportOverall(REPORT_PDF_LAYOUT), { human: 0, suspect: 44, ai: 56 })
+})
+
+test('PDF 总体占比：unpdf 的康熙部首字符归一化后同样可算', () => {
+  assert.deepEqual(reportOverall(REPORT_PDF_UNPDF), { human: 0, suspect: 44, ai: 56 })
+})
+
+test('PDF 总体占比：表格不完整时不猜，分类边界与报告一致', () => {
+  assert.equal(reportOverall('1 片段1 28.16% 1407 0.8233'), null)
+  assert.deepEqual(reportOverall(`1 片段1 50% 100 0.5
+2 片段2 50% 100 0.99`), { human: 0, suspect: 50, ai: 50 })
+  assert.equal(reportOverall('没有片段汇总表'), null)
 })
 
 test('流水线：写正文 → 出标题 → 对话改稿 → 读报告 → 改标红段', async () => {

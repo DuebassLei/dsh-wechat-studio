@@ -40,6 +40,26 @@ export async function pdfToText(buffer) {
   return String(text)
 }
 
+export function reportOverall(reportText) {
+  // unpdf 会把「片段」等提取成康熙部首字符，NFKC 归一化后才能匹配
+  const lines = String(reportText).normalize('NFKC').split(/\r?\n/).filter(line => /^\s*\d+\s+片段\s*\d+/.test(line))
+  if (!lines.length) return null
+  const rows = lines.map(line => line.match(/^\s*\d+\s+片段\s*\d+\s+(\d+(?:\.\d+)?)%\s+[\d,]+\s+(0(?:\.\d+)?|1(?:\.0+)?)\s*$/))
+  if (rows.some(row => !row)) return null
+  const totals = { human: 0, suspect: 0, ai: 0 }
+  let sum = 0
+  for (const row of rows) {
+    const ratio = Number(row[1])
+    const score = Number(row[2])
+    if (ratio < 0 || ratio > 100) return null
+    const level = score < 0.5 ? 'human' : score < 0.99 ? 'suspect' : 'ai'
+    totals[level] += ratio
+    sum += ratio
+  }
+  if (sum < 99 || sum > 101) return null
+  return Object.fromEntries(Object.entries(totals).map(([key, value]) => [key, Math.round(value * 10) / 10]))
+}
+
 const SYSTEM = `你在帮作者核对一份「朱雀 AI 检测」报告。报告把文章切成若干片段，每个片段有一个 AIGC 值：
 0–0.5 是人工特征，0.5–0.99 是疑似 AI，0.99–1 是 AI 特征。片段的切分位置和文章的段落不一定对齐。
 

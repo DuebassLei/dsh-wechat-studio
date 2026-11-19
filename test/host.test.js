@@ -636,3 +636,20 @@ test('归档当前稿件后可跨重启恢复，正文和续写状态保留', as
   assert.equal(restored.articles[0].updatedAt, updatedAt)
   assert.equal(toMarkdown((await deps.store.read()).articles[0]).trim(), MD.trim())
 })
+
+test('稿件分片损坏时 state 返回 storageProblems', async () => {
+  const { route } = await import('../src/host.js')
+  const root = mkdtempSync(join(tmpdir(), 'ws-storage-problems-'))
+  const seed = new Store(root)
+  await seed.update(state => {
+    state.articles.push({ id: 'a_x', title: '损坏测试', createdAt: '2026-11-19T00:00:00Z', updatedAt: '2026-11-19T00:00:00Z', blocks: [], history: [], chat: [] })
+  })
+  const dir = join(root, 'articles', 'a_x')
+  writeFileSync(join(dir, 'article.json'), '{broken')
+  writeFileSync(join(dir, 'article.json.bak'), '{broken')
+  const deps = { ctx: { get: () => null }, store: new Store(root), pipeline: { job: () => null } }
+  const req = { url: '/wechat-studio/state', method: 'GET', async *[Symbol.asyncIterator]() {} }
+  let result
+  await route(deps, req, { setHeader() {}, end(value) { result = JSON.parse(value) } })
+  assert.deepEqual(result.storageProblems, ['稿件 a_x 已损坏，已改名保留，未加载'])
+})

@@ -406,13 +406,64 @@ test('Host 启动后的首个请求前完成孤儿插图清理', async () => {
 test('状态文件损坏时启动清理不误删插图资产', async () => {
   const store = new Store(mkdtempSync(join(tmpdir(), 'ws-inline-invalid-state-')))
   const asset = await saveInlineImage(store.root, PNG)
-  await writeFile(store.file, '{broken json')
+  await writeFile(join(store.root, 'state.json'), '{broken json')
   const services = { connection: { requestRejection: () => undefined } }
   const handler = createHandler({ get: name => services[name] ?? null }, { store })
   const req = { url: '/wechat-studio/state', method: 'GET', headers: {} }
   const res = { setHeader() {}, end() {} }
   await handler(req, res)
   assert.ok((await readdir(join(store.root, 'inline-images'))).includes(`${asset}.png`))
+})
+
+test('稿件分片损坏时启动清理不误删插图资产', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ws-inline-corrupt-shard-'))
+  const seed = new Store(root)
+  const article = createArticle({ markdown: '# 标题\n\n正文' })
+  const asset = await saveInlineImage(root, PNG)
+  article.inlineDiagrams = [{ id: 'diagram', assetId: asset, format: 'png', status: 'generated' }]
+  await seed.update(state => { state.articles.push(article); state.currentId = article.id })
+  const dir = join(root, 'articles', article.id)
+  await writeFile(join(dir, 'article.json'), '{broken json')
+  await writeFile(join(dir, 'article.json.bak'), '{broken json')
+  const store = new Store(root)
+  const services = { connection: { requestRejection: () => undefined } }
+  const handler = createHandler({ get: name => services[name] ?? null }, { store })
+  const req = { url: '/wechat-studio/state', method: 'GET', headers: {} }
+  const res = { setHeader() {}, end() {} }
+  await handler(req, res)
+  assert.ok((await readdir(join(root, 'inline-images'))).includes(`${asset}.png`))
+})
+
+test('稿件主文件损坏回退到旧版备份时，启动清理不误删新版插图并返回 storageProblems', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ws-inline-backup-fallback-'))
+  const seed = new Store(root)
+  const article = createArticle({ markdown: '# v1\n\n第一版无插图' })
+  await seed.update(state => { state.articles.push(article); state.currentId = article.id })
+  const assetV2 = await saveInlineImage(root, PNG)
+  await seed.update(state => {
+    state.articles[0].title = 'v2'
+    state.articles[0].inlineDiagrams = [{ id: 'diagram-v2', assetId: assetV2, format: 'png', status: 'generated' }]
+  })
+  // 损坏主文件，保留 .bak（v1，不含 assetV2）
+  await writeFile(join(root, 'articles', article.id, 'article.json'), '{broken json')
+
+  const warnings = []
+  const store = new Store(root)
+  const services = {
+    connection: { requestRejection: () => undefined },
+    logger: { warn: message => warnings.push(message) },
+  }
+  const handler = createHandler({ get: name => services[name] ?? null }, { store })
+  const req = { url: '/wechat-studio/state', method: 'GET', headers: {} }
+  let body
+  const res = { setHeader() {}, end(value) { body = JSON.parse(value) } }
+  await handler(req, res)
+
+  assert.equal(body.current.title, 'v1')
+  assert.equal(body.storageProblems.length, 1)
+  assert.match(body.storageProblems[0], /主文件已损坏，已回退到上一版备份/)
+  assert.equal(warnings.length, 1)
+  assert.ok((await readdir(join(root, 'inline-images'))).includes(`${assetV2}.png`))
 })
 
 

@@ -21,7 +21,7 @@ import { Pipeline } from './pipeline.js'
 import { pdfToText } from './report.js'
 import { publicSettings, readSettings, updateSettings } from './settings.js'
 import { scheduleTime as parseScheduleTime } from './schedule-time.js'
-import { Store } from './store.js'
+import { JsonStore, Store } from './store.js'
 import { createVersionChecker } from './version.js'
 import { detect } from './zhuque.js'
 import { draftSvgCard, insertSvgCard, previewSvgCard } from './svg-cards.js'
@@ -392,6 +392,7 @@ async function snapshotState(ctx, store, pipeline) {
     articles: state.articles.map(article => listMeta(article, { bannerReady: bannerView(article).ready })).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
     current: view(current, pipeline, store, inlineCatalog.styles, inlineCatalog.warnings, settings),
     model: info ? info.model : null, modelPinned: Boolean(modelOverride()), modelOk: modelStatus.ok, modelError: modelStatus.error,
+    storageProblems: store.problems.map(p => p.message),
   }
 }
 
@@ -1136,16 +1137,18 @@ export function requestRejection(ctx, req) {
 
 export function createHandler(ctx, { store = new Store(), fetchImpl } = {}) {
   const pipeline = new Pipeline({ ctx, store, skillsDir: join(store.root, 'skills'), fetchImpl })
-  const insightsStore = new Store(store.root, { file: 'insights.json', empty: INSIGHTS_EMPTY })
+  const insightsStore = new JsonStore(store.root, { file: 'insights.json', empty: INSIGHTS_EMPTY })
   const versionChecker = createVersionChecker({ currentVersion: VERSION, fetchImpl })
   const deps = { ctx, store, pipeline, insightsStore, versionChecker, fetchImpl }
   const inlineCleanup = (async () => {
-    try {
-      JSON.parse(await readFile(store.file, 'utf8'))
-    } catch (err) {
-      if (err.code !== 'ENOENT') return
-    }
     const state = await store.read()
+    for (const problem of store.problems) {
+      const warn = ctx.get('logger')?.warn
+      if (typeof warn === 'function') warn(problem.message)
+      else console.warn(problem.message)
+    }
+    // 有稿件没加载出来时，无法判断哪些插图是孤儿，宁可不清。
+    if (store.problems.length) return
     await removeOrphanInlineImages(store.root, state.articles)
   })().catch(() => {})
   // 启动时恢复用户在插件里选过的模型

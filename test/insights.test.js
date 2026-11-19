@@ -6,7 +6,7 @@ import { test } from 'node:test'
 import { createArticle, HOOK_IDS } from '../src/article.js'
 import { buildInsights, enrichRows, importData, INSIGHTS_EMPTY, normTitle, parseGrowth, parseTendency, previewRule, applyRule } from '../src/insights.js'
 import { Pipeline } from '../src/pipeline.js'
-import { Store } from '../src/store.js'
+import { JsonStore, Store } from '../src/store.js'
 import { parseHtmlTables, parseWorkbook } from '../src/xls.js'
 
 // ---------- 最小 BIFF8 生成器：合成 fixture，不提交真实后台数据 ----------
@@ -310,7 +310,7 @@ async function readFileMaybe(path) {
 // ---------- Host 路由 ----------
 
 function insDeps(store) {
-  return { ctx: { get: () => null }, store, pipeline: { job: () => null }, insightsStore: new Store(store.root, { file: 'insights.json', empty: INSIGHTS_EMPTY }) }
+  return { ctx: { get: () => null }, store, pipeline: { job: () => null }, insightsStore: new JsonStore(store.root, { file: 'insights.json', empty: INSIGHTS_EMPTY }) }
 }
 async function insRequest(deps, path, { raw, post } = {}) {
   const payload = raw ?? (post ? Buffer.from(JSON.stringify(post)) : null)

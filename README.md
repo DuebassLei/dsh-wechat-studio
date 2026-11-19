@@ -241,12 +241,20 @@ dsh plugin --profile desktop remove dsh-wechat-studio
 
 | 文件或目录 | 用途 |
 | --- | --- |
-| `state.json` | 稿件、编辑历史和稿面状态 |
+| `index.json` | 稿件顺序、当前稿件和全局排版偏好等顶层状态 |
+| `articles/<id>/article.json` | 单篇稿件本体与稿面状态（不含改稿历史） |
+| `articles/<id>/history.json` | 单篇稿件的改稿历史记录 |
+| `state.json.v1.bak` | 从旧版单文件 `state.json` 自动迁移后的原文件备份，可在确认无误后手动删除 |
+| `*.bak` / `*.corrupt-*` | 上一版写入备份与损坏文件的隔离副本。某篇稿件打不开时，把同目录下的 `.corrupt-*` 或 `.bak` 改回 `article.json` 即可 |
 | `settings.json` | 插件设置和服务凭证 |
 | `insights.json` | 复盘导入数据、匹配、题材和写作尝试 |
 | `covers/` | 生成的封面图片 |
 | `inline-images/` | 已生成但独立保存的正文插图 PNG 资产；清理不再引用的文件和崩溃遗留的孤儿文件 |
 | `skills/` | 用户覆盖技能、插图风格扩展，以及确认写入的复盘规则 |
+
+**升级与降级**
+
+从旧版本升级时，首次启动会自动把 `state.json` 迁移到 `articles/` 目录，原文件改名为 `state.json.v1.bak`，无需手动操作。迁移后**不支持降级**：装回旧版本会看到空的稿件列表，旧版本里新写的内容也不会被新版本读取。如果必须回到旧版本，先退出插件，把 `state.json.v1.bak` 改名回 `state.json`；迁移后在新版本里做的修改不会带回去。
 
 未保存的段落文字和上次编辑位置保存在当前宿主的本地存储中。调用模型、朱雀、火山方舟、阿里云百炼或 Cloudinary 时，相应任务的数据会发送给所用服务。
 

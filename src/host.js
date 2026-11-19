@@ -10,6 +10,7 @@ import { MAX_LOCAL_IMAGE, transferFeishuImages, uploadInlineImage, uploadLocalIm
 import { feishuImageUrls, replaceFeishuImages } from './markdown-images.js'
 import { applyMarkdownReimport, planMarkdownReimport } from './markdown-reimport.js'
 import { generateInlineImage, readInlineAsset, readInlineImage, removeInlineImages, removeOrphanInlineImages, saveInlineImage } from './inline-assets.js'
+import { coverRuns, duplicateArticle } from './duplicate-article.js'
 import { analyzeInlineDiagrams, DIAGRAM_KINDS, insertDiagramBlock, sourceHash } from './inline-diagrams.js'
 import { loadInlineStyle, readInlineStyleCatalog } from './inline-skill.js'
 import { coverDownloadName, coverPrompt, generateArkCover, generateBailianCover, readCover, saveCover } from './cover.js'
@@ -75,13 +76,6 @@ const diagramJobs = new WeakMap()
 function coverJobMap(store) {
   if (!coverJobs.has(store)) coverJobs.set(store, new Map())
   return coverJobs.get(store)
-}
-
-function coverRuns(article) {
-  if (article.coverRuns) return article.coverRuns
-  return [...(article.coverHistory ?? []), article.cover].filter(Boolean).map(cover => ({
-    ...cover, count: 1, format: 'png', images: [{ id: cover.id }], status: 'succeeded',
-  }))
 }
 
 function startCover(deps, article, apiKey, options) {
@@ -725,6 +719,34 @@ export async function route(deps, req, res) {
         return applied
       })
       startImageImport(deps, result.article, result.urls)
+      return ok()
+    }
+    case 'articles/duplicate': {
+      let cleanup = null
+      let rollback = null
+      try {
+        await store.update(async state => {
+          const source = mustFind(state, body.id)
+          notBusy(pipeline, source.id)
+          if (coverJobMap(store).has(source.id) || imageJobMap(store).has(source.id) || diagramJobMap(store).has(source.id)) {
+            throw Object.assign(new Error('请等封面生成、图片转存或插图任务完成后再创建副本。'), { status: 409 })
+          }
+          const duplicated = await duplicateArticle(store.root, source)
+          const prevCurrentId = state.currentId
+          cleanup = duplicated.cleanup
+          rollback = () => {
+            const index = state.articles.indexOf(duplicated.article)
+            if (index !== -1) state.articles.splice(index, 1)
+            state.currentId = prevCurrentId
+          }
+          state.articles.push(duplicated.article)
+          state.currentId = duplicated.article.id
+        })
+      } catch (err) {
+        rollback?.()
+        await cleanup?.()
+        throw err
+      }
       return ok()
     }
     case 'articles/new': {

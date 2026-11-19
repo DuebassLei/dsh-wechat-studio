@@ -2050,6 +2050,14 @@ function DraftHome({ data }) {
       toast(restore ? '已恢复到全部稿件' : '已归档，可在「已归档」中恢复')
     }
   }
+  const duplicate = async draft => {
+    if (pending) return
+    const hasUnsaved = draftsFor(draft.id).size > 0
+    if (await act('articles/duplicate', { id: draft.id })) {
+      setState({ paperHome: false, view: 'paper', editing: null })
+      toast(hasUnsaved ? '已创建副本（原稿有未保存的段落修改，未包含在副本中）' : '已创建副本')
+    }
+  }
   const edited = draft => {
     const date = new Date(draft.updatedAt)
     return Number.isNaN(date.getTime()) ? '' : draftDate.format(date)
@@ -2097,6 +2105,8 @@ function DraftHome({ data }) {
                   </div>
                 </div>
                 <div className="ws-draft-card-actions">
+                  <button type="button" className="ws-btn" disabled={Boolean(pending)} onClick={() => duplicate(draft)}
+                    aria-label={`创建副本：${draft.title}`}>创建副本</button>
                   <button type="button" className="ws-btn" disabled={Boolean(pending)} onClick={() => move(draft)}
                     aria-label={`${showArchived ? '恢复' : '归档'}：${draft.title}`}>{showArchived ? '恢复稿件' : '归档'}</button>
                 </div>

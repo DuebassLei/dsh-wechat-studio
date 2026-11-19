@@ -89,7 +89,7 @@ body[data-ds-dark-theme] .ws-root { color-scheme: dark; --ok: #6fcb9c; --bad: #f
 .ws-skill-dir { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px 14px; border: 1px dashed var(--line); border-radius: var(--r-md); font-size: 13px; }
 
 /* 顶栏 */
-.ws-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
+.ws-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 16px 8px max(16px, calc(var(--dsh-frame-leading-clearance, 0px) - 72px)); background: var(--panel); border-bottom: 1px solid var(--line); }
 .ws-switch { position: relative; min-width: 0; }
 .ws-switch-btn { display: flex; align-items: center; gap: 6px; max-width: 340px; min-height: 34px; padding: 0 8px; border-radius: var(--r-sm); font-size: 15px; font-weight: 600; color: var(--ink); }
 .ws-switch-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -655,7 +655,7 @@ body[data-ds-dark-theme] .ws-root { color-scheme: dark; --ok: #6fcb9c; --bad: #f
 .ws-draft-card-main { display: grid; align-content: start; gap: 10px; min-width: 0; }
 .ws-draft-open { padding: 0; border: 0; background: none; color: inherit; font: inherit; font-weight: 700; text-align: left; overflow-wrap: anywhere; cursor: pointer; }
 .ws-draft-open::after { content: ''; position: absolute; inset: 0; border-radius: inherit; }
-.ws-draft-card-actions { display: flex; justify-content: flex-end; padding: 0 5px 3px; }
+.ws-draft-card-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; padding: 0 5px 3px; }
 .ws-draft-card-actions .ws-btn { position: relative; font-size: 12px; }
 .ws-draft-card-copy { display: grid; gap: 5px; padding: 3px 5px 6px; }
 .ws-draft-card-copy strong { overflow-wrap: anywhere; }

@@ -1,0 +1,11 @@
+{
+  "style": "poster",
+  "poster": {
+    "eyebrow": "实测 Claude Code",
+    "title1": "一句话需求",
+    "title2": "直接出成稿",
+    "ask": "帮我排版这篇",
+    "result": "3 分钟",
+    "result_sub": "多端预览都对"
+  }
+}

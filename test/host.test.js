@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -153,7 +153,7 @@ test('PDF 取文字：pdftotext 和打包的 unpdf 都走得通', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'ws-test-'))
   const html = join(dir, 'r.html')
   const pdf = join(dir, 'r.pdf')
-  execFileSync('python3', ['-c', `open(${JSON.stringify(html)},'w').write('<meta charset=utf-8><p>AIGC 0.93 fragment one</p>')`])
+  writeFileSync(html, '<meta charset=utf-8><p>AIGC 0.93 fragment one</p>')
   try {
     execFileSync('google-chrome', ['--headless', '--no-sandbox', '--disable-gpu', `--print-to-pdf=${pdf}`, html], { stdio: 'ignore' })
   } catch {

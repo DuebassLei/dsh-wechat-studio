@@ -1,4 +1,4 @@
-// 开头横幅：按文章写一份横幅规格（banner.json），交给 vendor/layout/banner.py 去画。
+// 开头横幅：按文章写一份横幅规格（banner.json），交给 vendor/layout/banner.js 去画。
 // 规则来自 skills/banner.md（wechat-opening-banner skill）。只把选中风格那一节喂给模型，整份太长。
 
 export const BANNER_STYLES = {

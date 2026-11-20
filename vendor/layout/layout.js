@@ -1343,7 +1343,7 @@ function render(md, T, meta, stat = null) {
 }
 
 // ---------------- page ----------------
-const PAGE = String.raw`<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>__TITLE__ · 公众号排版</title>
+const PAGE = String.raw`<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><title>__TITLE__ · 公众号排版</title>
 <style>
 body{margin:0;background:#EDEDED;font-family:'PingFang SC',sans-serif;color:#222}
 .bar{position:sticky;top:0;z-index:5;background:#fff;border-bottom:1px solid #e5e5e5;padding:10px 20px;display:flex;gap:8px 10px;flex-wrap:wrap;align-items:center}
@@ -1402,6 +1402,13 @@ button.subtle,.actions summary{font:inherit;font-size:13px;padding:8px 10px;bord
 .follow input:checked{background:#24863d}
 .follow input:checked::before{transform:translateX(15px)}
 #banner-actions{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:8px;font-size:12px}
+.msg-act{margin-left:6px;padding:2px 9px;border:1px solid currentColor;border-radius:6px;background:#fff;color:inherit;font-size:12px;cursor:pointer;font-weight:600}
+.msg-act:hover{background:#f7f3f0}
+.avatar-hint{margin:6px 0 0;font-size:12px;line-height:1.5;color:#666}
+.avatar-help{margin:6px 0 8px;font-size:12px;color:#555}
+.avatar-help summary{cursor:pointer;color:#4a6c54}
+.avatar-help ol{margin:6px 0 0;padding-left:18px;line-height:1.6}
+.avatar-help code{font-size:11px;background:#f0f1ed;padding:1px 4px;border-radius:4px}
 @media(max-width:780px){.workbench{grid-template-columns:minmax(0,1fr)}.settings{position:absolute;inset:0 0 0 auto;width:min(290px,100%);z-index:2;box-shadow:-6px 0 20px #0002}.bar{padding-inline:10px}.actions{margin-left:auto}}
 </style></head><body>
 <header class="bar"><b>__TITLE__</b>
@@ -1429,13 +1436,14 @@ button.subtle,.actions summary{font:inherit;font-size:13px;padding:8px 10px;bord
 </section>
 <section id="follow-options" hidden><label class="follow">文末关注卡 <input id="follow-card" type="checkbox" role="switch"></label></section>
 <section><h3>头像</h3>
-<label for="gif">公众号图片地址</label><input type="text" id="gif" placeholder="https://mmbiz.qpic.cn/…">
-<label for="local">本地图片预览</label><input type="file" id="local" accept="image/*"></section>
+<label for="gif">公众号图片地址</label><input type="text" id="gif" placeholder="留空自动使用首字徽章，或填 https://mmbiz.qpic.cn/…">
+<p class="avatar-hint">不填也能直接复制，自动用作者首字徽章兜底。</p>
+<details class="avatar-help"><summary>如何获取公众号图片地址？</summary><ol><li>登录公众号后台，在「内容管理 → 素材库」上传头像图片</li><li>点开图片后右键选择「复制图片地址」</li><li>粘贴到上方输入框（以 <code>https://mmbiz.qpic.cn/</code> 开头）</li></ol></details></section>
 </aside></div>
 <div id="manual"><div><b>浏览器没让我写剪贴板，请手动复制</b><p style="font-size:13px;color:#666">已全选，按 ⌘C / Ctrl+C。</p><textarea readonly></textarea><p style="text-align:right"><button class="ghost" onclick="document.getElementById('manual').style.display='none'">关闭</button></p></div></div>
 <script>
 const D=__DATA__;
-const G=document.getElementById('gif'),L=document.getElementById('local');
+const G=document.getElementById('gif');
 const settings=document.getElementById('layout-settings'), settingsToggle=document.getElementById('settings-toggle');
 function toggleSettings(open){settings.hidden=!open;settings.parentElement.classList.toggle('settings-closed',!open);
   settingsToggle.setAttribute('aria-expanded',String(open));}
@@ -1466,12 +1474,16 @@ window.setStudioOptions=(state, action)=>{
   follow.onchange=()=>{const enabled=follow.checked;follow.checked=state.followCard;action('layout/follow-card',{enabled})};
 };
 function ls(k,v){try{if(v===undefined)return localStorage.getItem(k);localStorage.setItem(k,v)}catch(e){return null}}
-G.value=ls('lq_banner_gif')||''; let local=ls('lq_banner_gif_local')||'';
+G.value=ls('lq_banner_gif')||'';
 let theme=D.fixed_theme?D.default_theme:(ls('lq_layout_theme')||D.default_theme); if(!D.palette[theme])theme=D.default_theme;
 let style=D.fixed_style?D.default_style:(ls('lq_layout_style')||D.default_style); if(!D.styles[style])style=D.default_style;
 function esc(u){return u.replace(/&/g,'&amp;').replace(/"/g,'&quot;')}
+function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function avatarBadgeHtml(){const m=D.palette[theme].main,ch=escHtml(D.avatar_initial||'文');return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72" width="72" height="72" style="display:block;width:72px;height:72px;"><rect width="72" height="72" rx="36" fill="'+m+'"/><text x="36" y="47" font-size="30" font-weight="800" fill="#FFFFFF" text-anchor="middle" font-family="\'PingFang SC\',\'Helvetica Neue\',sans-serif">'+ch+'</text></svg>'}
+function avatarBadgeSvg(x,y,w,h){const m=D.palette[theme].main,ch=escHtml(D.avatar_initial||'文'),nw=+w,nh=+h,cx=Math.round((+x)+nw/2),aligned=nw===84&&nh===80,cy=aligned?Math.round((+y)+44):Math.round((+y)+nh/2),r=aligned?34:Math.round(Math.min(nw,nh)*0.38),fs=Math.round(r*0.92);return '<g><circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="'+m+'"/><text x="'+cx+'" y="'+Math.round(cy+fs*0.35)+'" font-size="'+fs+'" font-weight="800" fill="#FFFFFF" text-anchor="middle" font-family="\'PingFang SC\',\'Helvetica Neue\',sans-serif">'+ch+'</text></g>'}
+function fillAvatar(html,u){if(u)return html.split('GIF_URL_HERE').join(u);return html.replace(/<img\s+src="GIF_URL_HERE"[^>]*\/>/g,()=>avatarBadgeHtml()).replace(/<image\s+x="([^"]+)"\s+y="([^"]+)"\s+width="([^"]+)"\s+height="([^"]+)"[^>]*href="GIF_URL_HERE"\s*\/>/g,(_,x,y,w,h)=>avatarBadgeSvg(x,y,w,h))}
 function paint(h){for(const k in D.tokens)h=h.split(D.tokens[k]).join(D.palette[theme][k]);return h}
-function parts(u){const BN=(style=='neo'&&D.banner_neo)?D.banner_neo:D.banner;const b=BN?(BN[theme]||BN._):'';return {banner:b.split('GIF_URL_HERE').join(u),body:paint(D.styles[style]).split('GIF_URL_HERE').join(u)}}
+function parts(u){const BN=(style=='neo'&&D.banner_neo)?D.banner_neo:D.banner;const b=BN?(BN[theme]||BN._):'';return {banner:fillAvatar(b,u),body:fillAvatar(paint(D.styles[style]),u)}}
 const review=document.getElementById('review'), reviewCopy=document.getElementById('review-copy');
 const popovers=[review,document.getElementById('copy-menu')];
 window.dismissLayoutPopovers=()=>{for(const panel of popovers)panel.open=false};
@@ -1510,12 +1522,13 @@ function renderReview(){
   review.querySelector('summary').textContent='自查报告'+(groups[0][1].length||videos.length?'（'+(groups[0][1].length+videos.length)+'）':'');
   document.getElementById('review-stats').textContent=D.review?.stats||'';
 }
-reviewCopy.onclick=()=>copyAll(document.getElementById('copy-all'),true);
+let copyFallback=false;
+reviewCopy.onclick=()=>copyAll(document.getElementById('copy-all'),true,copyFallback);
 for(const panel of popovers)panel.addEventListener('toggle',()=>{
   if(panel.open)for(const other of popovers){if(other!==panel)other.open=false;}
 });
 review.addEventListener('toggle',()=>{if(!review.open)reviewCopy.hidden=true});
-function render(){const p=parts(esc(local||G.value.trim()||''));document.getElementById('pv').innerHTML=(p.banner?'<section style="margin:0 0 24px">'+p.banner+'</section>':'')+p.body;
+function render(){const p=parts(esc(G.value.trim()||''));document.getElementById('pv').innerHTML=(p.banner?'<section style="margin:0 0 24px">'+p.banner+'</section>':'')+p.body;
   document.getElementById('sts').innerHTML=Object.keys(D.styles).map(k=>'<button type="button" class="sw st'+(k==style?' on':'')+'" title="'+D.style_desc[k]+'" onclick="pickS(\''+k+'\')">'+D.style_names[k]+'</button>').join('');
   document.getElementById('sws').innerHTML=Object.keys(D.palette).map(k=>'<button type="button" class="sw'+(k==theme?' on':'')+'" onclick="pick(\''+k+'\')"><i style="background:'+D.palette[k].main+'"></i>'+D.names[k]+'</button>').join('');renderReview()}
 let savingLayout=false;
@@ -1537,7 +1550,6 @@ async function selectLayout(nextStyle,nextTheme){
 function pick(k){selectLayout(style,k)}
 function pickS(k){selectLayout(k,theme)}
 G.addEventListener('input',()=>{ls('lq_banner_gif',G.value.trim());render()});
-L.addEventListener('change',()=>{const f=L.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{local=r.result;ls('lq_banner_gif_local',local);render()};r.readAsDataURL(f)});
 render();
 if(D.studio_options){
   const options=D.studio_options;
@@ -1545,11 +1557,11 @@ if(D.studio_options){
     status:options.banner.style==='none'?'':options.banner.ready?'已生成':'待生成'});
   window.frameElement?.dispatchEvent(new Event('studio-options-ready'));
 }
-function msg(t,ok){const m=document.getElementById('m');m.textContent=t;m.className=ok?'ok':'err'}
+function msg(t,ok,act){const m=document.getElementById('m');m.textContent=t;m.className=ok?'ok':'err';if(act){const btn=document.createElement('button');btn.type='button';btn.className='msg-act';btn.textContent=act.label;btn.onclick=act.onClick;m.append(' ',btn)}}
 function flash(b,t){const o=b.dataset.l||b.textContent;b.dataset.l=o;b.textContent=t;setTimeout(()=>b.textContent=o,1800)}
-function need(part){const u=G.value.trim();const raw=parts('GIF_URL_HERE');if((part?raw[part]:raw.banner+raw.body).indexOf('GIF_URL_HERE')<0)return parts('');
-  if(!u){msg('请填写头像的公众号图片地址',false);toggleSettings(true);G.focus();return null}
-  if(!/^https:\/\/mmbiz\.qpic\.cn\//.test(u)){msg('头像地址要以 https://mmbiz.qpic.cn/ 开头（公众号图库里的图）',false);toggleSettings(true);G.focus();return null}
+function need(part,fallback,retry){const u=G.value.trim();const raw=parts('GIF_URL_HERE');if((part?raw[part]:raw.banner+raw.body).indexOf('GIF_URL_HERE')<0)return parts('');
+  if(fallback||!u)return parts('');
+  if(!/^https:\/\/mmbiz\.qpic\.cn\//.test(u)){msg('头像地址要以 https://mmbiz.qpic.cn/ 开头（公众号图库里的图）',false,{label:'改用默认徽章直接复制',onClick:retry});toggleSettings(true);G.focus();return null}
   return parts(esc(u))}
 function legacy(h,p){let d=false;const f=e=>{e.clipboardData.setData('text/html',h);e.clipboardData.setData('text/plain',p);e.preventDefault();d=true};
   document.addEventListener('copy',f);let ok=false;try{ok=document.execCommand('copy')}catch(e){}document.removeEventListener('copy',f);return ok&&d}
@@ -1557,14 +1569,14 @@ async function put(h){const t=h.replace(/<[^>]+>/g,'');if(legacy(h,t))return tru
   try{if(navigator.clipboard&&window.ClipboardItem){await navigator.clipboard.write([new ClipboardItem({'text/html':new Blob([h],{type:'text/html'}),'text/plain':new Blob([t],{type:'text/plain'})})]);return true}}catch(e){}return false}
 function manual(p){const d=document.getElementById('manual');const t=d.querySelector('textarea');t.value=p;d.style.display='flex';t.focus();t.select()}
 async function send(b,h,what){if(await put(h)){flash(b,'已复制 ✓');msg('已复制'+what+'（'+D.style_names[style]+' · '+D.names[theme]+'），去公众号编辑器正文里粘贴',true)}else{msg('这个窗口不允许写剪贴板：请用 Chrome 直接打开本文件',false);manual(h)}}
-async function copyAll(b,confirmed=false){const p=need();if(!p)return;
-  if(!confirmed&&D.review?.before.length){reviewCopy.hidden=false;review.open=true;return;}
-  review.open=false;send(b,(p.banner?'<section style="margin:0 0 24px">'+p.banner+'</section>':'')+p.body,'全文')}
+async function copyAll(b,confirmed=false,fallback=false){const p=need(null,fallback,()=>copyAll(b,confirmed,true));if(!p)return;
+  if(!confirmed&&D.review?.before.length){copyFallback=fallback;reviewCopy.hidden=false;review.open=true;return;}
+  copyFallback=false;review.open=false;send(b,(p.banner?'<section style="margin:0 0 24px">'+p.banner+'</section>':'')+p.body,'全文')}
 async function copyMd(b){const t=D.md||'';let ok=false;
   try{await navigator.clipboard.writeText(t);ok=true}catch(e){}
   if(!ok){const f=e=>{e.clipboardData.setData('text/plain',t);e.preventDefault();ok=true};document.addEventListener('copy',f);try{document.execCommand('copy')}catch(e){}document.removeEventListener('copy',f)}
   if(ok){flash(b,'已复制 ✓');msg('已复制 Markdown（'+t.length+' 字），可以贴到朱雀做检测',true)}else{msg('浏览器没让写剪贴板，请手动复制',false);manual(t)}}
-async function copyPart(b,k){const p=need(k);if(!p)return;if(!p[k]){msg('这篇没有横幅',false);return}send(b,p[k],k=='banner'?'横幅':'正文')}
+async function copyPart(b,k,fallback=false){const p=need(k,fallback,()=>copyPart(b,k,true));if(!p)return;if(!p[k]){msg('这篇没有横幅',false);return}send(b,p[k],k=='banner'?'横幅':'正文')}
 </script></body></html>`
 
 const ORDER = ['图片', '图注', '视频占位', '动画卡', '滑动卡']
@@ -1642,6 +1654,7 @@ export function renderPage(source, { banner: bannerSpec, style: argStyle, theme:
     palette: Object.fromEntries(Object.entries(THEMES).map(([k, v]) => [k, Object.fromEntries(Object.keys(TOK).map(c => [c, v[c]]))])),
     names: Object.fromEntries(Object.entries(THEMES).map(([k, v]) => [k, v.name])), tokens: TOK,
     banner, banner_neo: bannerNeo, default_theme: theme, default_style: style,
+    avatar_initial: (() => { const ch = Array.from(String(get(meta, 'author', AUTHOR) || AUTHOR).trim())[0] || '文'; return /^[a-z]$/.test(ch) ? ch.toUpperCase() : ch })(),
     fixed_theme: Boolean(argTheme || get(meta, 'theme')), fixed_style: Boolean(argStyle || get(meta, 'style')), md: plainMd(md),
   }
   const html = PAGE.split('__TITLE__').join(esc(title)).split('__DATA__').join(dumps(data).split('</').join('<\\/'))

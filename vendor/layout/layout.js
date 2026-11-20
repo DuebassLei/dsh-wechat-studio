@@ -1353,7 +1353,9 @@ body{margin:0;background:#EDEDED;font-family:'PingFang SC',sans-serif;color:#222
 .sw.st{padding:4px 14px}.sw.on{border-color:#222;background:#fff;font-weight:700}
 button.go{border:0;background:#C9643E;color:#fff;padding:9px 16px;border-radius:8px;font-size:14px;cursor:pointer;font-weight:700}
 button.ghost{border:1.5px solid #C9643E;background:#fff;color:#C9643E;padding:8px 14px;border-radius:8px;font-size:13px;cursor:pointer}
-#m{font-size:13px;width:100%} #m.ok{color:#1B7A44;font-weight:700;background:#E8F5EE;border:1px solid #B7E2C8;border-radius:14px;padding:2px 12px;width:max-content;max-width:100%} .err{color:#C9643E;font-weight:700}
+#m{font-size:13px;width:100%} #m.ok{color:#1B7A44;font-weight:700} .err{color:#C9643E;font-weight:700}
+#toast{position:fixed;left:50%;bottom:30px;transform:translateX(-50%);z-index:9;background:#1B7A44;color:#fff;padding:10px 20px;border-radius:22px;font-size:14px;font-weight:700;box-shadow:0 6px 24px #0003;opacity:0;transition:opacity .25s;pointer-events:none;white-space:nowrap;max-width:min(90vw,640px);overflow:hidden;text-overflow:ellipsis}
+#toast.show{opacity:1}
 .phone{max-width:640px;margin:24px auto 80px;background:#fff;border-radius:14px;box-shadow:0 6px 30px rgba(0,0,0,.08);padding:28px 22px}
 .phone h1{font-size:22px;line-height:1.4;margin:0 0 18px;color:#111}
 #manual{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:9}
@@ -1435,6 +1437,7 @@ button.subtle,.actions summary{font:inherit;font-size:13px;padding:8px 10px;bord
 <label for="local">本地图片预览</label><input type="file" id="local" accept="image/*"></section>
 </aside></div>
 <div id="manual"><div><b>浏览器没让我写剪贴板，请手动复制</b><p style="font-size:13px;color:#666">已全选，按 ⌘C / Ctrl+C。</p><textarea readonly></textarea><p style="text-align:right"><button class="ghost" onclick="document.getElementById('manual').style.display='none'">关闭</button></p></div></div>
+<div id="toast" role="status"></div>
 <script>
 const D=__DATA__;
 const G=document.getElementById('gif'),L=document.getElementById('local');
@@ -1549,6 +1552,8 @@ if(D.studio_options){
   document.getElementById('push-draft').hidden=false;
 }
 function msg(t,ok){const m=document.getElementById('m');m.textContent=t;m.className=ok?'ok':'err'}
+let toastTimer=0;
+function showToast(t){const el=document.getElementById('toast');el.textContent=t;el.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),4000)}
 function flash(b,t){const o=b.dataset.l||b.textContent;b.dataset.l=o;b.textContent=t;setTimeout(()=>b.textContent=o,1800)}
 function need(part){const u=G.value.trim();const raw=parts('GIF_URL_HERE');if((part?raw[part]:raw.banner+raw.body).indexOf('GIF_URL_HERE')<0)return parts('');
   if(!u){msg('请填写头像的公众号图片地址',false);toggleSettings(true);G.focus();return null}
@@ -1576,7 +1581,7 @@ async function pushDraft(b,confirmed=false){const p=need();if(!p)return;
   const label=b.textContent;b.disabled=true;b.textContent='推送中…';
   const ok=await saveLayoutPreferences('wechat/draft',{html:(p.banner?'<section style="margin:0 0 24px">'+p.banner+'</section>':'')+p.body});
   b.disabled=false;b.textContent=label;
-  if(ok){b.classList.add('ok');flash(b,'已推送 ✓');setTimeout(()=>b.classList.remove('ok'),1800);msg('已推送到公众号草稿箱（'+D.style_names[style]+' · '+D.names[theme]+'），去公众号后台「草稿箱」查看',true)}
+  if(ok){b.classList.add('ok');flash(b,'已推送 ✓');setTimeout(()=>b.classList.remove('ok'),1800);showToast('✓ 已推送到公众号草稿箱，去后台「草稿箱」查看')}
   else msg('推送没有成功，看页面上的提示',false)}
 document.getElementById('push-draft').onclick=()=>pushDraft(document.getElementById('push-draft'));
 </script></body></html>`

@@ -11,12 +11,13 @@ import { COVER_STYLES } from '../src/cover-styles.js'
 // 稿面：左边对话改稿，中间是稿子和纸边批注，右边是标题、朱雀质检和导出。
 import React from 'react'
 import { cardMarkdown, emphasisFormats, formatSelection, insertFormats } from './editor-format.js'
-import { act, copyDetectionText, copyMarkdown, copyText, countCurrentParagraphDrafts, getState, loadLayout, loadModels, loadRevisions, loadSettings, loadSkills, loadVersion, previewMarkdownReimport, reimportMarkdown, rememberArticleView, saveSettings, setState, testZhuque, toast, uploadImage, uploadPortrait, uploadReport, useStudio } from './state.js'
+import { act, copyDetectionText, copyMarkdown, copyText, countCurrentParagraphDrafts, getState, loadLayout, loadModels, loadRevisions, loadSettings, loadSkills, loadStyleProfile, loadVersion, openStyleWizard, previewMarkdownReimport, reimportMarkdown, rememberArticleView, saveSettings, setState, testZhuque, toast, uploadImage, uploadPortrait, uploadReport, useStudio } from './state.js'
 import { InsightsView } from './insights.jsx'
 import { InlineDiagramDialog, InlineDiagramPane } from './inline-diagrams.jsx'
 import { MarkdownImportFields } from './markdown-import.jsx'
 import { ScheduleView } from './schedule.jsx'
 import { isSvgCardText, SvgCardBlock, SvgCardsPane } from './svg-cards.jsx'
+import { WritingStyleCard, WritingStyleWizard } from './writing-style.jsx'
 
 const ICONS = {
   check: 'M3 8.5l3.2 3.2L13 5',
@@ -1323,23 +1324,29 @@ function Steps({ article, flagged, retest, onQuality }) {
 }
 
 export function NewDialog() {
-  const [tab, setTab] = React.useState('paste')
-  const [topic, setTopic] = React.useState('')
-  const [material, setMaterial] = React.useState('')
-  const [markdown, setMarkdown] = React.useState('')
+  const hasPersonalWriterStyle = useStudio(s => s.data?.personalStyleScopes?.writer ?? s.data?.hasPersonalStyle)
+  const savedDraft = React.useMemo(() => getState().newDialogDraft, [])
+  const [tab, setTab] = React.useState(savedDraft?.tab ?? 'paste')
+  const [topic, setTopic] = React.useState(savedDraft?.topic ?? '')
+  const [material, setMaterial] = React.useState(savedDraft?.material ?? '')
+  const [markdown, setMarkdown] = React.useState(savedDraft?.markdown ?? '')
   const [busy, setBusy] = React.useState(false)
   const [reading, setReading] = React.useState(false)
   const readingRef = React.useRef(false)
   const handleReadingChange = value => { readingRef.current = value; setReading(value) }
   const locked = busy || reading
-  const close = () => { if (!locked) setState({ dialog: null }) }
+  const close = () => { if (!locked) setState({ dialog: null, newDialogDraft: null }) }
+  const openStyleFromNew = () => {
+    setState({ newDialogDraft: { tab, topic, material, markdown } })
+    openStyleWizard(1, { returnTo: 'new' })
+  }
   const submit = async event => {
     event.preventDefault()
     if (busy || readingRef.current) return
     setBusy(true)
     const ok = await act('articles/new', tab === 'paste' ? { markdown } : { topic, material })
     setBusy(false)
-    if (ok) setState({ dialog: null, module: 'paper', paperHome: false, view: 'paper', editing: null })
+    if (ok) setState({ dialog: null, newDialogDraft: null, module: 'paper', paperHome: false, view: 'paper', editing: null })
   }
   return (
     <div className="ws-scrim" onMouseDown={e => { if (e.target === e.currentTarget) close() }}>
@@ -1361,6 +1368,11 @@ export function NewDialog() {
             <label className="ws-field"><span>素材（可选）</span>
               <textarea rows={8} value={material} placeholder="聊天记录、笔记、数据、你的原话。正文只会用这里出现过的事实，缺的地方会留 [可补] 占位。" onChange={e => setMaterial(e.target.value)} />
             </label>
+            {!hasPersonalWriterStyle ? (
+              <p className="ws-muted ws-small ws-style-inline-hint">
+                当前按内置默认风格写作 · <button type="button" className="ws-link" disabled={locked} onClick={openStyleFromNew}>生成我的风格</button>
+              </p>
+            ) : null}
           </>
         )}
         <div className="ws-dialog-foot">
@@ -1893,12 +1905,13 @@ function SoonView({ item }) {
 
 function SkillsView() {
   const skills = useStudio(s => s.skills)
-  React.useEffect(() => { loadSkills() }, [])
+  React.useEffect(() => { loadSkills(); void loadStyleProfile() }, [])
   if (!skills) return <div className="ws-center"><span className="ws-shimmer">正在读取…</span></div>
   if (skills.error) return <div className="ws-center"><p className="ws-muted">读取失败：{skills.error}</p></div>
   return (
     <div className="ws-page">
       <h1 className="ws-page-title">技能</h1>
+      <WritingStyleCard />
       <p className="ws-page-lead">这里显示插件当前使用的技能。写作、标题、去 AI 味、朱雀流程和开头横幅可以通过下方目录覆盖。封面和正文插图使用目录式技能；正文插图支持在覆盖目录中增加或覆盖风格。</p>
       <div className="ws-skill-list">
         {skills.skills.map(item => (
@@ -2217,6 +2230,7 @@ export function Studio({ onOpenPlugin }) {
       {dialog?.type === 'inline-diagram' && data?.current ? <InlineDiagramDialog key={`${data.current.id}:${dialog.mode}:${dialog.diagramId ?? 'blocks'}`} article={data.current} cloudinaryReady={data.cloudinaryReady} /> : null}
       {dialog === 'reimport' && data?.current?.id === reimportArticleId ? <ReimportDialog key={reimportArticleId} article={data.current} /> : null}
       {dialog === 'new' ? <NewDialog /> : null}
+      {dialog === 'style-wizard' ? <WritingStyleWizard /> : null}
       {dialog === 'settings' ? <SettingsDialog onOpenPlugin={onOpenPlugin} /> : null}
       {dialog === 'model' ? <ModelDialog /> : null}
       {note ? <div className={`ws-toast ${note.error ? 'is-error' : ''}`} role="status">{note.text}</div> : null}

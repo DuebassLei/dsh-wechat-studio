@@ -8,7 +8,7 @@ export function countCurrentParagraphDrafts(blocks, drafts) {
   return blocks.filter(block => drafts.has(block.id)).length
 }
 
-let snap = { data: null, error: null, view: 'paper', paperHome: true, dialog: null, toast: null, editing: null, layout: null, pending: null, chatOpen: true, bannerTried: {}, module: 'paper', skills: null, settings: null, update: null, insights: null, insightsRange: 'all', insightsError: null, insightsRulePreview: null, svgCardCandidate: null }
+let snap = { data: null, error: null, view: 'paper', paperHome: true, dialog: null, toast: null, editing: null, layout: null, pending: null, chatOpen: true, bannerTried: {}, module: 'paper', skills: null, style: null, styleWizardStep: 1, styleWizardReturnTo: null, newDialogDraft: null, settings: null, update: null, insights: null, insightsRange: 'all', insightsError: null, insightsRulePreview: null, svgCardCandidate: null }
 const listeners = new Set()
 let timer = null
 
@@ -47,8 +47,8 @@ async function request(path, options) {
   return body
 }
 
-export function postJson(path, body) {
-  return request(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+export function postJson(path, body, options = {}) {
+  return request(path, { ...options, method: 'POST', headers: { 'content-type': 'application/json', ...(options.headers ?? {}) }, body: JSON.stringify(body) })
 }
 
 const bodyKey = (current, brand) => (current ? [current.id, current.title, current.banner?.style, current.banner?.at, current.followCard, brand?.author, brand?.slogan, ...current.blocks.map(b => b.text)].join('\u0001') : '')
@@ -227,6 +227,54 @@ export async function loadSkills() {
   } catch (err) {
     setState({ skills: { error: err.message } })
   }
+}
+
+export async function loadStyleProfile() {
+  try {
+    setState({ style: await request('style/profile') })
+  } catch (err) {
+    setState({ style: { error: err.message } })
+  }
+}
+
+export function openStyleWizard(step = 1, { returnTo = null } = {}) {
+  setState({ dialog: 'style-wizard', styleWizardStep: step, styleWizardReturnTo: returnTo })
+  void loadStyleProfile()
+}
+
+export function analyzeStyle(payload, signal) {
+  return postJson('style/analyze', payload, signal ? { signal } : undefined)
+}
+
+export function previewStyle(payload, signal) {
+  return postJson('style/preview', payload, signal ? { signal } : undefined)
+}
+
+export function renderStyleMarkdown(profile, signal) {
+  return postJson('style/render', { profile }, signal ? { signal } : undefined)
+}
+
+export async function applyStyle(payload) {
+  const result = await postJson('style/apply', payload)
+  setState(s => ({
+    style: { ...result.state, previewMarkdown: result.previewMarkdown },
+    skills: s.skills ? { ...s.skills, skills: result.skills } : s.skills,
+  }))
+  await refresh()
+  return result
+}
+
+export async function restoreStyle({ restoreBackup = false } = {}) {
+  const result = await postJson('style/restore', { restoreBackup })
+  setState(s => ({
+    style: { ...result.state, previewMarkdown: result.previewMarkdown },
+    skills: s.skills ? { ...s.skills, skills: result.skills } : s.skills,
+  }))
+  await refresh()
+  const backupNote = result.backedUp?.length ? `（手改内容已备份：${result.backedUp.join('、')}）` : ''
+  const insightsNote = result.preservedInsights ? '，已保留数据复盘规则' : ''
+  toast(`${restoreBackup ? '已恢复你之前的自定义规则' : '已恢复内置默认风格'}${insightsNote}${backupNote}`)
+  return result
 }
 
 export async function loadSettings() {

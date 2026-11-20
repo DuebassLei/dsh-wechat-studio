@@ -1412,6 +1412,7 @@ button.subtle,.actions summary{font:inherit;font-size:13px;padding:8px 10px;bord
 <button type="button" class="go" id="review-copy" hidden>确认并复制全文</button>
 </div></details>
 <button class="go" id="copy-all" onclick="copyAll(this)">复制全文到公众号</button>
+<button class="subtle" id="push-draft" type="button" hidden>推送草稿箱</button>
 <details id="copy-menu"><summary aria-label="其他复制方式">更多</summary><div class="menu">
 <button onclick="copyPart(this,'banner')">只复制横幅</button>
 <button onclick="copyPart(this,'body')">只复制正文</button>
@@ -1514,7 +1515,7 @@ reviewCopy.onclick=()=>copyAll(document.getElementById('copy-all'),true);
 for(const panel of popovers)panel.addEventListener('toggle',()=>{
   if(panel.open)for(const other of popovers){if(other!==panel)other.open=false;}
 });
-review.addEventListener('toggle',()=>{if(!review.open)reviewCopy.hidden=true});
+review.addEventListener('toggle',()=>{if(!review.open){reviewCopy.hidden=true;reviewAction=null}});
 function render(){const p=parts(esc(local||G.value.trim()||''));document.getElementById('pv').innerHTML=(p.banner?'<section style="margin:0 0 24px">'+p.banner+'</section>':'')+p.body;
   document.getElementById('sts').innerHTML=Object.keys(D.styles).map(k=>'<button type="button" class="sw st'+(k==style?' on':'')+'" title="'+D.style_desc[k]+'" onclick="pickS(\''+k+'\')">'+D.style_names[k]+'</button>').join('');
   document.getElementById('sws').innerHTML=Object.keys(D.palette).map(k=>'<button type="button" class="sw'+(k==theme?' on':'')+'" onclick="pick(\''+k+'\')"><i style="background:'+D.palette[k].main+'"></i>'+D.names[k]+'</button>').join('');renderReview()}
@@ -1544,6 +1545,7 @@ if(D.studio_options){
   window.setStudioOptions({...options,busy:true,followPending:true,
     status:options.banner.style==='none'?'':options.banner.ready?'已生成':'待生成'});
   window.frameElement?.dispatchEvent(new Event('studio-options-ready'));
+  document.getElementById('push-draft').hidden=false;
 }
 function msg(t,ok){const m=document.getElementById('m');m.textContent=t;m.className=ok?'ok':'err'}
 function flash(b,t){const o=b.dataset.l||b.textContent;b.dataset.l=o;b.textContent=t;setTimeout(()=>b.textContent=o,1800)}
@@ -1565,6 +1567,17 @@ async function copyMd(b){const t=D.md||'';let ok=false;
   if(!ok){const f=e=>{e.clipboardData.setData('text/plain',t);e.preventDefault();ok=true};document.addEventListener('copy',f);try{document.execCommand('copy')}catch(e){}document.removeEventListener('copy',f)}
   if(ok){flash(b,'已复制 ✓');msg('已复制 Markdown（'+t.length+' 字），可以贴到朱雀做检测',true)}else{msg('浏览器没让写剪贴板，请手动复制',false);manual(t)}}
 async function copyPart(b,k){const p=need(k);if(!p)return;if(!p[k]){msg('这篇没有横幅',false);return}send(b,p[k],k=='banner'?'横幅':'正文')}
+let reviewAction=null;
+async function pushDraft(b,confirmed=false){const p=need();if(!p)return;
+  if(!confirmed&&D.review?.before.length){reviewAction='draft';reviewCopy.hidden=false;review.open=true;return;}
+  review.open=false;
+  if(!saveLayoutPreferences){msg('请从工作台里打开排版预览再推送',false);return;}
+  const label=b.textContent;b.disabled=true;b.textContent='推送中…';
+  const ok=await saveLayoutPreferences('wechat/draft',{html:(p.banner?'<section style="margin:0 0 24px">'+p.banner+'</section>':'')+p.body});
+  b.disabled=false;b.textContent=label;
+  if(ok){flash(b,'已推送 ✓');msg('已推送到公众号草稿箱（'+D.style_names[style]+' · '+D.names[theme]+'），去公众号后台「草稿箱」查看',true)}
+  else msg('推送没有成功，看页面上的提示',false)}
+document.getElementById('push-draft').onclick=()=>pushDraft(document.getElementById('push-draft'));
 </script></body></html>`
 
 const ORDER = ['图片', '图注', '视频占位', '动画卡', '滑动卡']

@@ -523,7 +523,7 @@ export async function route(deps, req, res) {
         layoutPreferences: article.layoutPreferences ?? null,
       }
       const { html, report } = await renderLayout(toMarkdown(article), {
-        ...resolveLayoutPreferences(settings, article), banner, followCard: studioOptions.followCard, studioOptions,
+        ...resolveLayoutPreferences(settings, article), banner, followCard: studioOptions.followCard, brand: settings.brand, studioOptions,
       })
       return json(res, 200, { html, report })
     }

@@ -1353,7 +1353,7 @@ body{margin:0;background:#EDEDED;font-family:'PingFang SC',sans-serif;color:#222
 .sw.st{padding:4px 14px}.sw.on{border-color:#222;background:#fff;font-weight:700}
 button.go{border:0;background:#C9643E;color:#fff;padding:9px 16px;border-radius:8px;font-size:14px;cursor:pointer;font-weight:700}
 button.ghost{border:1.5px solid #C9643E;background:#fff;color:#C9643E;padding:8px 14px;border-radius:8px;font-size:13px;cursor:pointer}
-#m{font-size:13px;width:100%} .ok{color:#2F9E5A} .err{color:#C9643E;font-weight:700}
+#m{font-size:13px;width:100%} #m.ok{color:#1B7A44;font-weight:700;background:#E8F5EE;border:1px solid #B7E2C8;border-radius:14px;padding:2px 12px;width:max-content;max-width:100%} .err{color:#C9643E;font-weight:700}
 .phone{max-width:640px;margin:24px auto 80px;background:#fff;border-radius:14px;box-shadow:0 6px 30px rgba(0,0,0,.08);padding:28px 22px}
 .phone h1{font-size:22px;line-height:1.4;margin:0 0 18px;color:#111}
 #manual{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:9}
@@ -1365,6 +1365,7 @@ body{height:100vh;display:flex;flex-direction:column;background:#eeefec;color:#2
 .actions{display:flex;gap:6px;align-items:center}
 button.go{background:#252a26;padding:9px 14px}
 button.subtle,.actions summary{font:inherit;font-size:13px;padding:8px 10px;border:1px solid #dedfda;border-radius:8px;background:white;cursor:pointer;color:#252a26}
+#push-draft.ok{border-color:#2F9E5A;background:#E8F5EE;color:#1B7A44;font-weight:700}
 .actions details{position:relative}
 .actions .menu{position:absolute;right:0;top:calc(100% + 7px);min-width:150px;padding:5px;background:white;border:1px solid #dedfda;border-radius:9px;box-shadow:0 8px 24px #0002}
 .menu button{display:block;width:100%;text-align:left;border:0;background:white;padding:8px;cursor:pointer;white-space:nowrap}
@@ -1575,7 +1576,7 @@ async function pushDraft(b,confirmed=false){const p=need();if(!p)return;
   const label=b.textContent;b.disabled=true;b.textContent='推送中…';
   const ok=await saveLayoutPreferences('wechat/draft',{html:(p.banner?'<section style="margin:0 0 24px">'+p.banner+'</section>':'')+p.body});
   b.disabled=false;b.textContent=label;
-  if(ok){flash(b,'已推送 ✓');msg('已推送到公众号草稿箱（'+D.style_names[style]+' · '+D.names[theme]+'），去公众号后台「草稿箱」查看',true)}
+  if(ok){b.classList.add('ok');flash(b,'已推送 ✓');setTimeout(()=>b.classList.remove('ok'),1800);msg('已推送到公众号草稿箱（'+D.style_names[style]+' · '+D.names[theme]+'），去公众号后台「草稿箱」查看',true)}
   else msg('推送没有成功，看页面上的提示',false)}
 document.getElementById('push-draft').onclick=()=>pushDraft(document.getElementById('push-draft'));
 </script></body></html>`

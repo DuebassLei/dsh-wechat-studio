@@ -35,3 +35,16 @@ test('排版不再依赖 Python', async () => {
   const src = await readFile(new URL('../src/layout.js', import.meta.url), 'utf8')
   assert.doesNotMatch(src, /child_process|python/)
 })
+
+test('头像留空自动注入作者首字徽章兜底逻辑与获取指引', async () => {
+  const banner = JSON.parse(await readFile(new URL('banner.json', dir), 'utf8'))
+  const page = renderPage('# 标题\n\n一段正文。', { banner, outro: 'true', brandAuthor: 'alex的笔记', name: 'demo.md' })
+  assert.match(page.html, /<meta name="referrer" content="no-referrer">/)
+  assert.match(page.html, /"avatar_initial":\s*"A"/)
+  assert.match(page.html, /function avatarBadgeHtml\(\)/)
+  assert.match(page.html, /function avatarBadgeSvg\(/)
+  assert.match(page.html, /改用默认徽章直接复制/)
+  assert.match(page.html, /内容管理 → 素材库/)
+  assert.doesNotMatch(page.html, /本地图片预览/)
+  assert.doesNotMatch(page.html, /请填写头像的公众号图片地址/)
+})

@@ -230,6 +230,14 @@ dsh plugin --profile desktop remove dsh-wechat-studio
 
 导入飞书 Markdown 后，图片会在后台转存，成功后正文使用 Cloudinary 的可访问地址。如果失败，可以在稿面重试。飞书链接过期时，请重新从飞书复制 Markdown。编辑正文时也可直接粘贴剪贴板图片，或在「插入 → 图片与图注 / 长图卡」中选择本地 PNG、JPEG、GIF、WebP（不超过 10 MB）；确认插入后上传到 Cloudinary，再写入普通 Markdown 图片。
 
+**封面人物与服装**：开源版默认不带参考图；想让封面人物是自己，可在「设置 · 封面生成」上传清晰的正脸半身照（需先配置 Cloudinary）或粘贴公网 https 图片地址。服装支持三种模式：沿用参考图衣服（适合半身照）、简约纯色上衣（适合只传头像时按性别配衣）或自定义描述。不填参考图时，人物由性别和外貌补充文字生成，每次长相会不同。如果需要固定为作者同款服装，可在自定义描述里填写：
+
+```text
+an OVERSIZED, RELAXED-FIT heavyweight waffle-knit short-sleeve polo shirt in Midnight Green (#004953), dropped shoulders, wide loose sleeves, collar open with both buttons undone, visible waffle texture, similar to iPhone 11 Pro Midnight Green — NOT a fitted business polo
+```
+
+升级提示：之前从未保存过设置的用户，升级后封面默认不带参考图，需要自己填一次；之前保存过任意设置的用户，`settings.json` 里可能已存有插件作者的示例照片，升级后设置页和封面弹窗会出现提醒，请换成自己的照片或清空。
+
 朱雀 API 的分类置信度和 PDF 报告得分分别显示，两者含义不同，不直接比较。PDF 有完整片段汇总表时，人工、疑似 AI 和 AI 的总体占比按片段比例计算并明确标注。API 按原文匹配段落；标准 PDF 按片段原文直接匹配，无法直接解析的版式才由模型辅助，以报告原文为准。重复的开头语等内容，可在设置里加入检测时排除的固定句。
 
 </details>

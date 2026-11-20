@@ -27,27 +27,15 @@ OVERALL COMPOSITION:
 - Wide horizontal banner, cream paper background with a faint editorial grid of thin hairline column rules
 - Top band: one MASSIVE ultra-condensed black display word spanning the FULL WIDTH of the canvas, cropped at the edges: "{{英文主题词,大写,如 CODEX}}" — letters are gigantic, filling the top third, with photocopy grunge texture inside the letterforms
 - Middle-left: two-line extra-bold black Chinese title; the highlighted phrase sits on a solid acid lime block with black text on top
-- Right 40%: a real-photo-style half-body portrait of an Asian male tech blogger, standing in front of a black panel with acid lime edges
+- Right 40%: a real-photo-style half-body portrait of the person described in SUBJECT, standing in front of a black panel with acid lime edges
 - Checkerboard accents, used with restraint: only 1-2 SMALL checkerboard patches (each just a short segment of roughly 4-10 large squares, partially cropped by the canvas edge), placed as quiet graphic accents — for example one small patch near a top corner and optionally one tiny patch elsewhere. The squares must be LARGE and chunky, similar in scale to the capsule labels. STRICTLY NO full-length checkerboard borders, NO checkerboard strips running along any canvas edge, NO dense tiny checker squares, NO checkerboard framing the composition
 - One small black monochrome terminal window as a prop, bottom-right area
 - Letter-spaced uppercase English capsule micro-labels scattered in the grid cells as editorial furniture
 
 SUBJECT (RIGHT SIDE):
-- An Asian male matching the reference image, looking like a senior software engineer turned content creator; preserve the reference person's apparent age and facial features
-- Wearing an OVERSIZED, RELAXED-FIT, heavyweight waffle-knit short-sleeve polo shirt in Midnight Green color (#004953, deep dark green with subtle teal undertone)
-
-  CRITICAL FIT DETAILS — this is NOT a standard fitted polo:
-  - EXTREMELY relaxed, oversized silhouette — the shirt drapes loosely on the body, not hugging it
-  - DROPPED SHOULDERS: the shoulder seam falls noticeably below the actual shoulder point
-  - WIDE, LONG SLEEVES: short sleeves that hang loose to just above the elbow, with wide sleeve openings
-  - DEEP V OPENING: collar wide and open, BOTH buttons undone, relaxed deep V-neckline
-  - Visible diagonal draping wrinkles from the oversized fit
-
-  FABRIC DETAILS:
-  - Heavyweight cotton waffle-knit fabric, visible grid-like raised waffle texture
-  - The dark green color: rich, slightly muted, similar to iPhone 11 Pro Midnight Green
-
-- Glasses: thin black wire-frame
+- [[SUBJECT]]
+- Wearing [[OUTFIT]]
+- Keep this outfit unchanged in every pose; do not swap it for other clothing
 - Facial expression: {{表情:calm, confident, slight smile / focused, composed / quietly amused — 用克制表达,不要写 blocklist 里的词(excited/shocked 等),即使是否定写法也会被脚本拦截}}
 - Half-body shot, right side of the canvas, in front of the black-and-lime panel
 - Photo treatment: halftone photocopy grain, slightly desaturated skin, high-contrast print look
@@ -139,7 +127,7 @@ campaign 风的视觉锚点。**1 个英文核心词,大写**,如 `CODEX`、`HER
 2. 顶部巨字必须跨满全宽、出血裁切,**禁止缩成普通标题**
 3. 全图颗粒噪点 + 半调复印质感,**禁止干净光滑的数字渲染感**
 4. 荧光绿只用于:高亮词色块 + 人物背后色块边缘 + 棋盘格点缀。棋盘格只能是 1-2 处小面积局部点缀(每处几格大格子、被画布边缘裁切),禁止铺满任何一条边的整条棋盘格带/边框
-5. 共享 IP 基线:人物、午夜绿 Polo、左字右人、克制表情(见 SKILL.md)
+5. 共享 IP 基线:左字右人、克制表情(人物与服装来自用户设置,见 SKILL.md)
 6. 禁止:渐变、glow、3D 效果、圆润可爱的元素
 
 ## 自检三问

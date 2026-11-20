@@ -20,31 +20,13 @@ THEME PRESET:
 OVERALL COMPOSITION:
 - Wide horizontal banner, dark background
 - Left 60% area: bold Chinese typography
-- Right 40% area: a real-photo-style half-body portrait of an Asian male tech blogger
+- Right 40% area: a real-photo-style half-body portrait of the person described in SUBJECT
 - Background full of subtle thematic patterns and floating UI elements
 
 SUBJECT (RIGHT SIDE):
-- An Asian male matching the reference image, looking like a senior software engineer turned content creator; preserve the reference person's apparent age and facial features
-- Wearing an OVERSIZED, RELAXED-FIT, heavyweight waffle-knit short-sleeve polo shirt in Midnight Green color (#004953, deep dark green with subtle teal undertone)
-
-  CRITICAL FIT DETAILS — this is NOT a standard fitted polo:
-  - EXTREMELY relaxed, oversized silhouette — the shirt drapes loosely on the body, not hugging it
-  - DROPPED SHOULDERS: the shoulder seam falls noticeably below the actual shoulder point, creating natural sagging fabric folds at the shoulder area
-  - WIDE, LONG SLEEVES: short sleeves that hang loose and extend down to just above the elbow, with wide sleeve openings
-  - DEEP V OPENING: the collar is wide and open, BOTH buttons completely undone, creating a relaxed deep V-neckline that exposes the upper chest area
-  - Visible diagonal draping wrinkles from the oversized fit
-  - Body of the shirt drapes loosely, not tight to the torso
-
-  FABRIC DETAILS:
-  - Heavyweight cotton waffle-knit fabric, very thick and structured
-  - HIGHLY VISIBLE waffle texture: prominent grid-like raised pattern across the entire shirt
-  - The fabric should look substantial and grainy, with strong tactile presence
-  - Light catches the raised waffle pattern creating subtle highlights that emphasize the texture
-  - The dark green color: rich, slightly muted, similar to iPhone 11 Pro Midnight Green
-
-  STYLE REFERENCE: Japanese-inspired oversized casual polo, like the relaxed polos popular in 2024-2025 menswear — NOT a tight business polo, NOT a Lacoste classic fit, NOT a sportswear polo
-
-- Glasses: thin black wire-frame
+- [[SUBJECT]]
+- Wearing [[OUTFIT]]
+- Keep this outfit unchanged in every pose; do not swap it for other clothing
 - Facial expression: {{表情:calm, thoughtful, slight smile / focused, confident / serene, contemplative / quietly amused — NOT exaggerated, NOT smirking, NOT shocked, NOT excited}}
 - Half-body shot, positioned on the right 1/3 of the canvas
 - Body slightly turned toward center
@@ -59,9 +41,9 @@ RIGHT-SIDE OBJECT SYSTEM:
 - Readability rule: key text and structure must remain readable, but prioritize the overall silhouette and composition over filling every area with tiny labels
 
 Interaction pattern with the object: {{动作模式:presenting from below / pointing at a key module / lightly tapping the card surface / holding the card edge up for display / framing the object with both hands / leaning in to inspect it closely}}
-- The action must clearly match both the article topic and the chosen object family, and the clothing must remain the same Midnight Green oversized waffle polo regardless of the action variation
-- Lighting: soft warm light from the left, creating gentle facial highlights AND emphasizing the waffle fabric texture and the draping fabric folds
-- Strong rim light to separate the dark green polo from the dark teal background
+- The action must clearly match both the article topic and the chosen object family, and the clothing must remain the outfit described above regardless of the action variation
+- Lighting: soft warm light from the left, creating gentle facial highlights AND emphasizing the fabric texture and natural folds
+- Strong rim light to separate the outfit from the dark teal background
 
 OBJECT CONTENT INSIDE / AROUND THE RIGHT-SIDE SYSTEM:
 - Top label or anchor title: "{{对象标题,通常是 1-3 词}}"
@@ -98,8 +80,8 @@ ENGLISH ACCENT TEXT (subtle, top of main title area):
 STYLE NOTES:
 - Photo-realistic portrait, NOT illustration
 - Background has depth — slight bokeh/blur on far elements
-- Main color palette: deep teal/charcoal background, midnight green polo, white title, theme accent colors from the chosen preset only
-- Strong tonal separation between the polo and the background to avoid blending
+- Main color palette: deep teal/charcoal background, the person's outfit, white title, theme accent colors from the chosen preset only
+- Strong tonal separation between the outfit and the background to avoid blending
 - No exaggerated facial expressions
 - No author watermark or signature text anywhere
 - Maintain a "professional senior dev sharing a discovery" vibe
@@ -158,7 +140,7 @@ ASPECT RATIO: 21:9 (wide cinematic banner format)
 
 ### 动作模式——不要每篇都同一个手势
 
-动作不是装饰,而是右侧信息卡的交互语言。必须根据文章主题选一种最匹配的互动方式,同时**衣服不变,人物还是同一个 LQ IP**。
+动作不是装饰,而是右侧信息卡的交互语言。必须根据文章主题选一种最匹配的互动方式,同时**衣服不变,人物还是同一个人**。
 
 | 文章类型 | 推荐动作模式 |
 |---|---|
@@ -275,8 +257,7 @@ ASPECT RATIO: 21:9 (wide cinematic banner format)
 1. **画幅** 21:9 宽幅
 2. **背景色** 深绿青到深炭灰渐变(`#0F2A2D` → `#1A1A1A`)
 3. **强调色** 从批准的 4 组 preset 里选 1 组,不要自由改色
-4. **人物** 30+ 中国男性程序员,薄黑框眼镜
-5. **服装** 午夜绿(#004953)Oversize 重磅华夫格短袖 Polo,落肩深 V 宽袖
+4. **人物与服装** 来自用户设置(参考图 + 人物设置),模板不写死
 6. **布局** 左 60% 文字 / 右 40% 人物 + UI 卡片
 7. **无水印** 画面不带作者署名
 8. **背景必备** 终端命令片段 + 目录树

@@ -27,21 +27,10 @@ OVERALL COMPOSITION:
 - Composition reads as one fast diagonal flow from bottom-left to top-right
 
 SUBJECT (RIGHT SIDE):
-- An Asian male matching the reference image, looking like a senior software engineer turned content creator; preserve the reference person's apparent age and facial features
+- [[SUBJECT]]
 - LARGE HEAD-AND-SHOULDERS close-up (bigger crop than a half-body shot — the face is BIG in frame, head nearly touching the top edge, face and upper chest fill the right side), facing the camera directly with quiet confidence
-- Wearing an OVERSIZED, RELAXED-FIT, heavyweight waffle-knit short-sleeve polo shirt in Midnight Green color (#004953, deep dark green with subtle teal undertone)
-
-  CRITICAL FIT DETAILS — this is NOT a standard fitted polo:
-  - EXTREMELY relaxed, oversized silhouette — the shirt drapes loosely on the body
-  - DROPPED SHOULDERS: the shoulder seam falls noticeably below the actual shoulder point
-  - WIDE, LONG SLEEVES: short sleeves hanging loose to just above the elbow
-  - DEEP V OPENING: collar wide and open, BOTH buttons undone, relaxed deep V-neckline
-
-  FABRIC DETAILS:
-  - Heavyweight cotton waffle-knit fabric, visible grid-like raised waffle texture
-  - The dark green color: rich, slightly muted, similar to iPhone 11 Pro Midnight Green
-
-- Glasses: thin black wire-frame
+- Wearing [[OUTFIT]]
+- Keep this outfit unchanged in every pose; do not swap it for other clothing
 - Facial expression: {{表情:calm, confident, direct gaze at camera / composed, slight smile / focused and assured — 用克制表达,不要写 blocklist 里的词(excited/shocked 等),即使是否定写法也会被脚本拦截}}
 - No hand props, no UI objects — the type is the hero, the person just owns the frame
 - Lighting: clean editorial studio light with a slight dramatic edge, sharp catchlights in the eyes, strong tonal separation from the black panel
@@ -112,7 +101,7 @@ ASPECT RATIO: 21:9 (wide cinematic banner format)
 2. 所有斜体元素(中文标题、红色速度条、空心英文回声)**共享同一个倾斜角度**
 3. 高亮词是红色斜体字本身,**禁止压色块**(那是 campaign 的玩法)
 4. 右侧是黑色斜切面板 + 一条红色斜切条纹 + 大头人物特写,**没有右侧 UI 对象、没有小标签、没有终端窗**
-5. 共享 IP 基线:人物、午夜绿 Polo、左字右人、克制表情(见 SKILL.md)
+5. 共享 IP 基线:左字右人、克制表情(人物与服装来自用户设置,见 SKILL.md)
 6. 禁止:渐变、glow、3D、胶囊标签、棋盘格、任何其他装饰
 
 ## 自检三问

@@ -11,20 +11,20 @@
 | **时尚人物 Campaign 风** | `campaign` | 奶油纸底 + 黑色巨字 + 酸性荧光绿 + 棋盘格 + 颗粒噪点 | 观点宣言/重磅实测/系列开篇,想要杂志大片感、态度感 |
 | **动感斜体大字风** | `kinetic` | 暖白底 + 超大斜体黑字 + 信号红高亮词 + 红色速度线 + 空心描边英文回声 + 黑色斜切面板大头人物 | 想要冲击力、速度感、运动感,标题本身就是主角 |
 | **颗粒喷溅海报风** | `grunge` | 左侧暖白皱纸 + 黑色磨损英文眉题 + 超大中文两行标题 + 颗粒喷溅过渡到右侧黑白摄影背景 + 强调色竖条/十字角块(五色 preset 选一)+ 人物指向黑色终端菜单面板 | 产品实测/商单/玩法拆解,中文标题要一眼读清,又想要杂志海报的粗粝感;也适合直接当公众号头图 |
-| **洋红纪实海报** | `magenta` | 做旧米灰墙、洋红点色、英文巨字、中文反差标题和桌前人物摄影 | 工具实测、工作流复盘和科技专题 |
+| **纪实海报** | `magenta` | 做旧米灰墙、6 组矿物杂志点色、英文巨字、中文反差标题和桌前人物摄影 | 工具实测、工作流复盘和科技专题 |
 | **羊毛毡手作** | `felt` | 米色手工纸底 + 羊毛毡/黏土微缩场景 + 特粗宋体中文标题 + 品牌色小字 | 产品发布/资讯解读/开源消息,想要温暖手作感、物件当主角 |
 
 **七种风格不变的 IP 基线**(这是"一眼认出林月半子"的根本):
 
 1. 画幅 21:9 宽幅
-2. 人物:30+ 中国男性程序员,薄黑框眼镜,穿午夜绿(#004953)Oversize 华夫格短袖 Polo(`grunge` 例外:默认深绿圆领 T,也可选 Polo,见下方专属基线)
+2. 人物:来自用户设置。有参考图时以参考图为准(长相、发型、配饰);服装默认沿用参考图,参考图只有头像时按性别配简单上衣,也可在设置里自定义。模板里用 [[SUBJECT]] / [[OUTFIT]] / [[人物]] / [[服装]] / [[玩偶]] 表示,由宿主填写,不要在替换值里另写人物和服装
 3. 布局:左字右人(文字区在左,人物在右)
 4. 无作者水印:画面不带个人署名
 5. 主标题两行中文粗体 + 1 个高亮词
 6. 表情克制:沉静、会心一笑、专注、温和笃定,禁止兴奋激动
 7. 英文小字标签(letter-spaced 大写)作为编辑感装饰
 
-**例外**:`magenta` 的服装与文字层级见其专属模板;`felt` 人物默认缺席(出现时是毛毡玩偶,眼镜 + 午夜绿 Polo 承载 IP),主标题用宋体衬线,不用英文小标签,不使用真人参考图。
+**例外**:`magenta` 的文字层级见其专属模板;`felt` 人物默认缺席(出现时是毛毡玩偶,形象和服装来自用户设置),主标题用宋体衬线,不用英文小标签,不使用真人参考图。
 
 **变的只是**:底色、强调色、装饰元素(终端背景 / 几何块+窗口卡 / 巨字+棋盘格 / 斜体字+速度线 / 皱纸+颗粒喷溅+终端菜单 / 毛毡微缩场景)、右侧对象形态、字体气质。
 
@@ -74,7 +74,7 @@
 4. **右侧对象** —— 每种风格有自己的对象体系,见第二步
 5. **底部/角落小标签** —— `classic` 用 emoji + 4-6 字三标签;`editorial` / `campaign` 用 letter-spaced 英文胶囊标签(如 `AI × DEVELOPER` / `SMALL TEAM BIGGER POSSIBILITIES`);`grunge` 只在标题下方放一行等宽英文小字,竖线分隔三段(如 `ASK, DON'T SEARCH | 2 INBOXES · 1 AGENT | NO PDF DOWNLOAD`)
 6. **人物互动动作** —— 托举 / 指向 / 轻触 / 双手框定 / 提起展示 / 近距离检视,根据文章内容和右侧对象决定,不要每篇都退化成同一个手势
-7. **主题色** —— `classic` 从 amber/cyan/lime/violet 四组 preset 选 1 组;`editorial` 固定克莱因蓝;`campaign` 固定酸性荧光绿;`kinetic` 固定信号红;`grunge` 从 lime/cyan/orange/pink/violet 五组 preset 选 1 组(默认 lime,色值和选色规则见 `references/prompt_template_grunge.md`);`felt` 跟随文章主角的品牌色(preset 表见 `references/prompt_template_felt.md`,默认赭橙)
+7. **主题色** —— `classic` 从 amber/cyan/lime/violet 四组 preset 选 1 组;`editorial` 固定克莱因蓝;`campaign` 固定酸性荧光绿;`kinetic` 固定信号红;`grunge` 从 lime/cyan/orange/pink/violet 五组 preset 选 1 组(默认 lime,色值和选色规则见 `references/prompt_template_grunge.md`);`magenta` 按文章题材从深钴蓝/松烟墨绿/矿物朱砂/焦橙陶土/梅子暗紫/油墨洋红六组 preset 选 1 组(不要因 id 叫 `magenta` 就偏选洋红,见 `references/prompt_template_magenta.md`);`felt` 跟随文章主角的品牌色(preset 表见 `references/prompt_template_felt.md`,默认赭橙)
 
 **重要原则**:
 
@@ -98,12 +98,12 @@
 | `magenta` | `references/prompt_template_magenta.md` |
 | `felt` | `references/prompt_template_felt.md` |
 
-选中 `magenta` 时，服装、文字层级与强调色遵循该模板专属设定。
+选中 `magenta` 时，文字层级与强调色遵循该模板专属设定。
 
 **关键坚持**(七种风格共享的品牌基线,**不要为了"创意"改掉**):
 
 - 画幅:21:9 宽幅(API 固定)
-- 人物:30+ 中国男性程序员,薄黑框眼镜,**穿午夜绿(#004953)Oversize 华夫格短袖 Polo**——这件衣服是 IP 资产,每篇都不变;唯一例外是 `grunge`,默认穿深绿圆领 T(#1E3329),想和其他风格统一时可换回 Polo
+- 人物:来自用户设置(参考图 + 人物设置),模板里用 [[SUBJECT]] / [[OUTFIT]] / [[人物]] / [[服装]] / [[玩偶]] 表示,由宿主填写,不要在替换值里另写人物和服装
 - 布局:左文字区 / 右人物 + 对象区
 - 无作者水印:画面不渲染个人署名
 - 字体要求:主标题粗体,关键词用风格强调色
@@ -117,20 +117,19 @@
 - `editorial`:米白纸感底(#F4F3EF),强调色固定克莱因蓝(#1F4FE0),必备蓝色几何块 + 悬浮白色 App 窗口卡 + 细线分隔 + letter-spaced 英文胶囊标签
 - `campaign`:奶油纸底(#F1EDE3),强调色固定酸性荧光绿(#C8F12F),必备顶部黑色巨字英文主题词 + 荧光绿高亮块 + 小面积棋盘格点缀 + 颗粒噪点质感 + 黑白迷你终端窗 + 栏线网格
 - `kinetic`:暖白底(#F5F3EE),强调色固定信号红(#EE2B24),必备超大斜体中文标题 + 红色速度线 + 左下角空心描边英文回声 + 右侧黑色斜切面板 + 大头人物特写;没有右侧 UI 对象、没有小标签,所有斜体元素共享同一倾斜角度
-- `grunge`:左侧暖白皱纸(#EEEBE4)+ 右侧黑白摄影背景,中间黑色颗粒喷溅过渡;强调色从五组 preset 选一(lime #B8F03A 默认 / cyan #3DDCFF / orange #FF6B1A / pink #FF5FA2 / violet #B69CFF,都保证黑字压色块对比度 ≥4.5:1),只用三处(左侧竖条、右上角十字角块、高亮词底);中文两行标题是全图最大元素(每行约画面高度 18%),英文眉题约 22% 高且只占左侧;标题下一行等宽英文小字;右下角黑色终端菜单面板(文章里的 3 个场景 + `Ask_`),人物食指指向第一行;不画棋盘格、栏线网格、胶囊标签;服装默认深绿圆领 T(`tee`),可选午夜绿 Polo(`polo`),两段描述只放一段进提示词
-- `felt`:米色手工纸底(#EFE8D8),右侧物件必须是羊毛毡/黏土手作微缩质感(绒毛纤维、哑光手捏痕、柔和接触阴影、浅景深);主标题特粗宋体/衬线纯黑,顶部品牌名小字用品牌色(preset 表见模板,默认赭橙 #D97757),强调色只出现在品牌名、高亮词、物件细节三处;文字平面印刷,禁止毛毡化;人物默认缺席,出现时是毛毡玩偶(黑短发 + 薄黑圆框眼镜 + 午夜绿 Polo),两段人物描述只放一段进提示词;宿主对本风格不传真人参考图
+- `grunge`:左侧暖白皱纸(#EEEBE4)+ 右侧黑白摄影背景,中间黑色颗粒喷溅过渡;强调色从五组 preset 选一(lime #B8F03A 默认 / cyan #3DDCFF / orange #FF6B1A / pink #FF5FA2 / violet #B69CFF,都保证黑字压色块对比度 ≥4.5:1),只用三处(左侧竖条、右上角十字角块、高亮词底);中文两行标题是全图最大元素(每行约画面高度 18%),英文眉题约 22% 高且只占左侧;标题下一行等宽英文小字;右下角黑色终端菜单面板(文章里的 3 个场景 + `Ask_`),人物食指指向第一行;不画棋盘格、栏线网格、胶囊标签
+- `felt`:米色手工纸底(#EFE8D8),右侧物件必须是羊毛毡/黏土手作微缩质感(绒毛纤维、哑光手捏痕、柔和接触阴影、浅景深);主标题特粗宋体/衬线纯黑,顶部品牌名小字用品牌色(preset 表见模板,默认赭橙 #D97757),强调色只出现在品牌名、高亮词、物件细节三处;文字平面印刷,禁止毛毡化;人物默认缺席,人物段只填「无人物」或「玩偶」,玩偶的形象和服装由宿主填写;宿主对本风格不传真人参考图
 
 ## 常见翻车点与对策
 
 | 翻车点 | 原因 | 对策 |
-|---|---|
-| 人物长得不像 LQ | 这是 AI 生图的根本机制问题——纯文字提示词每次的 seed 都不同 | 用图生图(image-to-image)+ 参考图;长期方案是训练 LoRA |
-| 衣服画成了普通 T 恤或卫衣 | "polo"在 AI 模型里默认是商务款,松弛风需要明确指令 | 提示词里强调 OVERSIZED / DROPPED SHOULDERS / waffle texture / 加负面词 NOT a hoodie |
-| 衣服颜色偏了(变成森林绿/草绿) | "midnight green"模型不熟 | 加锚点 "iPhone 11 Pro Midnight Green" 作为色卡参考 |
+|---|---|---|
+| 人物长得不像本人 | 这是 AI 生图的根本机制问题——纯文字提示词每次的 seed 都不同 | 在设置里上传清晰的正脸半身照 |
+| 半身照里的衣服被换掉 | 模型没遵守「沿用参考图服装」 | 在设置里把服装来源改成自定义描述,写清款式和颜色 |
 | 标题里出现奇怪的引号或乱码 | AI 生图对中文标点处理不稳定 | 提示词加 NO punctuation between Chinese title words;翻车后用 PS/Figma 涂掉 |
 | 表情太夸张(微笑过度,亢奋) | AI 默认会让人物显得"销售感" | 提示词写 NOT exaggerated, NOT smirking;用 calm/thoughtful/slight smile 这种克制表达 |
 | 背景代码太杂乱抢戏(classic) | 背景元素铺得太密 | 提示词强调 background elements should be FAINT and SUBTLE,透明度低,不抢主体 |
-| 人物和背景颜色融在一起(classic) | 午夜绿 Polo + 深绿背景容易糊掉 | 提示词强调 strong tonal separation, use rim light to separate subject from background |
+| 人物和背景颜色融在一起(classic) | 深色衣服 + 深绿背景容易糊掉 | 提示词强调 strong tonal separation, use rim light to separate subject from background |
 | 卡片里文字模糊 | AI 对小字处理差 | 提示词强调 the text inside the UI card must be sharp and readable;翻车后 PS 覆盖 |
 | editorial 风做成了深色底 | 模型对"editorial"惯性理解偏杂志暗调 | 提示词开头就写 off-white paper background, bright, high-key lighting,并加负面词 NOT dark background |
 | editorial 蓝不够正(偏天蓝/偏紫) | "blue"太泛 | 锚定 Klein blue / royal blue #1F4FE0, saturated and deep, NOT sky blue, NOT navy |

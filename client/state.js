@@ -139,6 +139,13 @@ export async function uploadImage(file, articleId = snap.data?.current?.id) {
   return url
 }
 
+export async function uploadPortrait(file) {
+  const { url } = await request('settings/portrait', {
+    method: 'POST', headers: { 'content-type': file.type || 'application/octet-stream' }, body: file,
+  })
+  return url
+}
+
 export async function copyText(text, done) {
   let ok = false
   try {

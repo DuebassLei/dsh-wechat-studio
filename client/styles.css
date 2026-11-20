@@ -322,7 +322,7 @@ body[data-ds-dark-theme] .ws-root { color-scheme: dark; --ok: #6fcb9c; --bad: #f
 .ws-hint .ws-link { margin-left: 6px; }
 
 /* 弹窗和提示 */
-.ws-scrim { position: absolute; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgb(0 0 0 / .32); }
+.ws-scrim { position: absolute; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: calc(20px + min(var(--dsh-frame-leading-clearance, 0px), 1px) * 36) 20px 20px; background: rgb(0 0 0 / .32); -webkit-app-region: no-drag; }
 .ws-dialog { display: flex; flex-direction: column; gap: 14px; width: 100%; max-width: 620px; max-height: 100%; overflow: auto; padding: 18px; border-radius: 16px; background: var(--card); border: 1px solid var(--line); box-shadow: 0 24px 60px rgb(0 0 0 / .22); }
 .ws-dialog-head, .ws-dialog-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .ws-dialog-foot { justify-content: flex-end; }
@@ -497,10 +497,10 @@ body[data-ds-dark-theme] .ws-root { color-scheme: dark; --ok: #6fcb9c; --bad: #f
   .ws-follow-track, .ws-follow-track::before { transition: background-color .16s ease, transform .16s ease; }
 }
 
-.ws-cover-history { max-width: 920px; overflow: hidden; gap: 0; padding: 0; }
+.ws-cover-history { max-width: 920px; max-height: min(100%, 680px); overflow: hidden; gap: 0; padding: 0; }
 .ws-cover-history > .ws-dialog-head { flex: none; padding: 16px 20px; border-bottom: 1px solid var(--line); }
 .ws-history-empty { padding: 18px 20px; }
-.ws-history-body { display: grid; grid-template-columns: 210px minmax(0, 1fr); min-height: 0; }
+.ws-history-body { flex: 1; display: grid; grid-template-columns: 210px minmax(0, 1fr); min-height: 0; }
 .ws-history-list { display: flex; flex-direction: column; gap: 6px; padding: 12px; background: var(--panel); border-right: 1px solid var(--line); overflow: auto; }
 .ws-history-run { display: grid; gap: 4px; text-align: left; color: var(--ink); background: transparent; border: 1px solid transparent; border-radius: 8px; padding: 9px 10px; cursor: pointer; }
 .ws-history-run:hover { background: var(--hover); }
@@ -1047,3 +1047,4 @@ body[data-ds-dark-theme] .ws-sched { --sched-warn: #e2b93b; }
   .ws-svg-type-current > .ws-link { grid-column: 1 / -1; }
 }
 @media (prefers-reduced-motion: reduce) { .ws-sched-day { transition: none; } }
+.ws-portrait-thumb { width: 56px; height: 56px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); background: #fff; }

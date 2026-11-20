@@ -4,6 +4,6 @@ export const COVER_STYLES = [
   { id: 'campaign', name: '时尚 Campaign', description: '奶油纸底、黑色巨型英文主题词和荧光绿高亮，适合观点和系列开篇。' },
   { id: 'kinetic', name: '动感大字', description: '暖白底、斜体大标题、红色速度线与右侧人物特写，突出标题。' },
   { id: 'grunge', name: '颗粒海报', description: '暖白皱纸、黑白摄影、颗粒喷溅和亮绿高亮，适合实测和玩法拆解。' },
-  { id: 'magenta', name: '洋红纪实海报', description: '做旧水泥墙、洋红高亮、英文巨字和桌前人物摄影，适合工具实测和反差主题。' },
+  { id: 'magenta', name: '纪实海报', description: '做旧水泥墙、主题点色、英文巨字和桌前人物摄影，适合工具实测和反差主题。' },
   { id: 'felt', name: '羊毛毡手作', description: '米色手工纸底、羊毛毡黏土微缩场景、宋体大标题和品牌色小字，适合产品发布和资讯解读。' },
 ]

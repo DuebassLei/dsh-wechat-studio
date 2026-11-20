@@ -98,7 +98,7 @@ function startCover(deps, article, apiKey, options) {
       article.coverError = null
     })
     try {
-      const prompt = await coverPrompt(ctx, title, markdown, style)
+      const prompt = await coverPrompt(ctx, title, markdown, style, options.persona, { hasReference: Boolean(options.referenceImage) })
       await store.update(() => { record.prompt = prompt })
       for (let index = 1; index <= count; index++) {
         Object.assign(job, { stage: 'generating', index })
@@ -548,6 +548,14 @@ export async function route(deps, req, res) {
     return json(res, 200, { url: publicUrl })
   }
 
+  if (path === 'settings/portrait') {
+    const image = await readBuffer(req, MAX_LOCAL_IMAGE)
+    // 生图接口的参考图不收动图；uploadLocalImage 为正文图片保留了 GIF，这里单独挡掉
+    if (['GIF87a', 'GIF89a'].includes(image.toString('ascii', 0, 6))) return json(res, 400, { error: '参考照片请用 PNG、JPEG 或 WebP。' })
+    const settings = await readSettings(store.root)
+    return json(res, 200, { url: await uploadLocalImage(image, settings.cloudinary, deps.fetchImpl) })
+  }
+
   if (path === 'insights/import') {
     const fileName = String(url.searchParams.get('name') ?? '导出.xls').slice(0, 200)
     const parsed = importData(await readBuffer(req, MAX_IMPORT), fileName)
@@ -804,7 +812,8 @@ export async function route(deps, req, res) {
       const model = provider === 'bailian' ? settings.bailianModel : settings.arkModel
       if (!apiKey) return json(res, 400, { error: provider === 'bailian' ? '请先在设置中填写阿里云百炼 API Key。' : '请先在设置中填写火山方舟 API Key。' })
       // felt 是毛毡微缩场景，传真人参考图会把画面拉回真人摄影
-      startCover(deps, article, apiKey, { style, resolution, count, format, model, provider, referenceImage: style === 'felt' ? null : settings.portraitUrl || null })
+      const referenceImage = style === 'felt' ? null : settings.portraitUrl || null
+      startCover(deps, article, apiKey, { style, resolution, count, format, model, provider, referenceImage, persona: settings.persona })
       return ok()
     }
     case 'images/retry': {

@@ -37,7 +37,7 @@
 1. 用户点名了颜色就用点名的;没点名时按上表"适合什么文章"选,拿不准就用 `lime`。
 2. 商单时避开竞品的品牌色;甲方品牌色恰好接近某个 preset 时可以选那一组,但不要为了品牌临时发明新颜色。
 3. 一张图只用一组强调色,三处位置(竖条、角块、高亮词底)都用同一个色值。
-4. 人物肤色保持自然,衣服颜色按服装选项走(深绿系),不随强调色变化。
+4. 人物肤色和衣服保持自然颜色,不随强调色变化。
 
 每次生成时,把 `{{中括号}}` 占位符换成从文章提炼的新内容,**其他保持不动**。
 
@@ -51,7 +51,7 @@ COLOR SYSTEM (fixed):
 - Right background: black-and-white high-contrast photograph of a dim room with soft window-light shadows and a blurred plant, fully desaturated
 - Type and panels: pure black (#111111) and white
 - Accent: {{强调色锚点,从 preset 表复制,如 fluorescent lime #B8F03A, bright and flat, NOT yellow, NOT olive}}
-- No other colors. The person's skin keeps a natural tone; the shirt keeps its midnight green.
+- No other colors. The person's skin and outfit keep their natural colors.
 
 TRANSITION:
 - Between the paper area and the photo area, a wide band of black ink spray and coarse grain particles, like spray paint or a worn photocopy edge, dissolving from left paper into the right photo. The transition runs vertically roughly at 55% of the width.
@@ -69,8 +69,8 @@ LAYOUT (left to right):
 - Right 42%: the person, a black terminal menu panel
 
 SUBJECT (RIGHT SIDE):
-- An Asian male, senior software engineer turned content creator, matching the reference image; preserve the reference person's facial features, hair color, hairstyle and glasses
-- Wearing {{服装,从下方服装选项复制一段,默认 tee}}
+- [[SUBJECT]]
+- Wearing [[OUTFIT]]
 - Real photographic look with light film grain; the face stays sharp and recognizable
 - Half body, positioned in the right part of the canvas, body slightly turned, head near the top of the canvas
 - Facial expression: {{表情:calm, confident, slight smile / quietly amused / composed and focused — 用克制表达,不要写 blocklist 里的词}}
@@ -100,21 +100,6 @@ STYLE NOTES:
 
 ASPECT RATIO: 21:9 (wide cinematic banner format)
 ```
-
-## 服装选项(grunge 专属,两选一)
-
-其他四种风格固定穿午夜绿华夫格 Polo。`grunge` 是例外:这个风格的定稿图穿的是深绿圆领 T,和皱纸、黑白照片的粗粝感更搭,所以**默认用圆领 T**,想和其他风格保持一致时再换 Polo。两种都是深绿系,IP 的"绿色上衣"记忆点不变。
-
-| 选项 | 什么时候用 | 填进 `{{服装}}` 的英文 |
-|---|---|---|
-| `tee`(默认) | 大多数情况;想要更随性、更像工作室实拍 | a plain heavyweight cotton crew-neck short-sleeve T-shirt in deep dark green (#1E3329, almost charcoal green), relaxed fit, slightly dropped shoulders, natural fabric folds, no logo, no print, no collar, no buttons |
-| `polo` | 想和 classic / campaign 等风格的封面放在一起时视觉统一 | an OVERSIZED, RELAXED-FIT heavyweight waffle-knit short-sleeve polo shirt in Midnight Green (#004953), dropped shoulders, loose drape, collar open, similar to iPhone 11 Pro Midnight Green |
-
-注意:
-
-- 两段英文**只放一段**进提示词,不要同时出现 T 恤和 Polo 的描述,模型会混出带领子的 T 恤。
-- 用 `tee` 时,模型偶尔会画出领子或纽扣:把 no collar, no buttons 留着;仍然出现就在末尾补一句 the shirt is a simple crew-neck tee。
-- 人物在黑白摄影背景前,衣服保留深绿色,不要跟着背景一起去饱和;需要时加一句 the person is in natural color while the background photo is black and white。
 
 ## 填空指引
 
@@ -147,7 +132,7 @@ ASPECT RATIO: 21:9 (wide cinematic banner format)
 3. 中文两行标题是全图最大元素;英文是眉题,不跨满全宽
 4. 标题下只有一行等宽小字,不撒胶囊标签、不画棋盘格、不画栏线网格
 5. 人物食指指向右下角黑色终端菜单面板
-6. 共享 IP 基线:人物、左字右人、克制表情(见 SKILL.md);服装是本风格的例外,默认深绿圆领 T,也可以换回午夜绿 Polo(见「服装选项」)
+6. 共享 IP 基线:左字右人、克制表情;人物与服装来自用户设置(见 SKILL.md)
 
 ## 自检三问
 

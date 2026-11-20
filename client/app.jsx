@@ -11,7 +11,7 @@ import { COVER_STYLES } from '../src/cover-styles.js'
 // 稿面：左边对话改稿，中间是稿子和纸边批注，右边是标题、朱雀质检和导出。
 import React from 'react'
 import { cardMarkdown, emphasisFormats, formatSelection, insertFormats } from './editor-format.js'
-import { act, copyDetectionText, copyMarkdown, copyText, countCurrentParagraphDrafts, getState, loadLayout, loadModels, loadRevisions, loadSettings, loadSkills, loadVersion, previewMarkdownReimport, reimportMarkdown, rememberArticleView, saveSettings, setState, testZhuque, toast, uploadImage, uploadReport, useStudio } from './state.js'
+import { act, copyDetectionText, copyMarkdown, copyText, countCurrentParagraphDrafts, getState, loadLayout, loadModels, loadRevisions, loadSettings, loadSkills, loadVersion, previewMarkdownReimport, reimportMarkdown, rememberArticleView, saveSettings, setState, testZhuque, toast, uploadImage, uploadPortrait, uploadReport, useStudio } from './state.js'
 import { InsightsView } from './insights.jsx'
 import { InlineDiagramDialog, InlineDiagramPane } from './inline-diagrams.jsx'
 import { MarkdownImportFields } from './markdown-import.jsx'
@@ -930,6 +930,7 @@ function CoverStyleDialog({ article }) {
               <CoverOptionGroup label="图片格式" name="cover-format" options={formats}
                 value={effectiveFormat} onChange={setFormat} disabled={busy} />
               <p className="ws-muted ws-small">当前提供方：{COVER_PROVIDERS.find(item => item.id === provider)?.name}，在「设置 · 封面生成」里切换。</p>
+              {settings?.portraitIsAuthorSample ? <p className="ws-warn ws-small" role="status">当前参考图是插件作者的示例照片，生成的封面会是作者的脸。请到「设置 · 封面生成」换成自己的照片。</p> : null}
             </> : settingsStatus === 'failed' ? <p className="ws-warn ws-small" role="status">无法读取封面设置。<button type="button" className="ws-link" onClick={readCoverSettings}>重试</button></p>
               : <p className="ws-muted ws-small" role="status">正在读取封面设置…</p>}
           </div>
@@ -1604,6 +1605,12 @@ function SettingsDialog({ onOpenPlugin }) {
   const [bailianModel, setBailianModel] = React.useState(null)
   const [bailianKey, setBailianKey] = React.useState('')
   const [portraitUrl, setPortraitUrl] = React.useState(null)
+  const [persona, setPersona] = React.useState({})
+  const [portraitBusy, setPortraitBusy] = React.useState(false)
+  // 预览只在上传成功或输入框失焦时更新，避免手输地址时每敲一个字就请求一次图片
+  const [portraitPreview, setPortraitPreview] = React.useState(null)
+  const [portraitPreviewFailed, setPortraitPreviewFailed] = React.useState(false)
+  const portraitInput = React.useRef(null)
   const [key, setKey] = React.useState('')
   const [endpoint, setEndpoint] = React.useState(null)
   const [fixed, setFixed] = React.useState(null)
@@ -1629,7 +1636,9 @@ function SettingsDialog({ onOpenPlugin }) {
     out.coverProvider = providerValue
     out.arkModel = arkModel ?? settings.arkModel
     out.bailianModel = bailianModel ?? settings.bailianModel
-    out.portraitUrl = portraitUrl ?? settings.portraitUrl ?? ''
+    out.persona = { ...settings.persona, ...persona }
+    // 只有改过才提交，避免把读到的旧值（可能是作者示例照片）再写一遍
+    if (portraitUrl !== null) out.portraitUrl = portraitUrl
     if (arkKey.trim()) out.arkKey = arkKey.trim()
     if (bailianKey.trim()) out.bailianKey = bailianKey.trim()
     if (key.trim()) out.zhuqueKey = key.trim()
@@ -1709,12 +1718,66 @@ function SettingsDialog({ onOpenPlugin }) {
                   placeholder={(isBailian ? settings.bailianKeySet : settings.arkKeySet) ? '已保存，留空表示不改' : isBailian ? '输入阿里云百炼 API Key' : '输入火山方舟 API Key'} />
               </label>
               {isBailian ? <p className="ws-muted ws-small">当前仅支持中国内地（北京）的百炼 API Key，图片格式为 PNG。</p> : null}
-              <label className="ws-field"><span>IP 人物参考图</span>
-                <input type="url" spellCheck={false} value={portraitUrl ?? settings.portraitUrl ?? ''}
-                  placeholder="https://…/portrait.png，留空则不带参考图"
-                  onChange={e => setPortraitUrl(e.target.value)} />
-              </label>
-              <p className="ws-muted ws-small">生成封面时作为人物形象参考的公网 https 图片地址，建议使用自己 IP 形象的正面照。清空并保存则不带参考图。</p>
+              {(() => {
+                const portraitValue = portraitUrl ?? settings.portraitUrl ?? ''
+                const previewUrl = portraitPreview ?? settings.portraitUrl ?? ''
+                const showPreview = /^https:\/\//.test(previewUrl) && !portraitPreviewFailed
+                const updatePreview = value => { setPortraitPreview(value); setPortraitPreviewFailed(false) }
+                const personaValue = { ...settings.persona, ...persona }
+                const cloudReady = Boolean(settings.cloudinary?.cloudName && settings.cloudinary?.apiKey && settings.cloudinary?.apiSecretSet)
+                const pick = async file => {
+                  if (!file) return
+                  if (file.size > 10 * 1024 * 1024) { toast('照片不能超过 10 MB。', true); return }
+                  if (file.type === 'image/gif') { toast('参考照片请用 PNG、JPEG 或 WebP。', true); return }
+                  setPortraitBusy(true)
+                  try {
+                    const url = await uploadPortrait(file)
+                    setPortraitUrl(url)
+                    updatePreview(url)
+                  } catch (err) { toast(err.message, true) } finally { setPortraitBusy(false) }
+                }
+                return <>
+                  <label className="ws-field"><span>IP 人物参考图</span>
+                    <input type="url" spellCheck={false} value={portraitValue}
+                      placeholder="https://…/portrait.png，留空则不带参考图" onChange={e => setPortraitUrl(e.target.value)}
+                      onBlur={e => updatePreview(e.target.value.trim())} />
+                  </label>
+                  {portraitUrl === null && settings.portraitIsAuthorSample ? <p className="ws-warn ws-small" role="status">当前参考图是插件作者的示例照片。如果你不是作者本人，请换成自己的照片，或者清空。</p> : null}
+                  <div className="ws-local-image-actions">
+                    <button type="button" className="ws-btn" disabled={!cloudReady || portraitBusy} onClick={() => portraitInput.current?.click()}>
+                      <Icon name="upload" />{portraitBusy ? '正在上传…' : '上传本地照片'}
+                    </button>
+                    <input ref={portraitInput} type="file" accept="image/png,image/jpeg,image/webp" hidden
+                      onChange={e => { pick(e.target.files?.[0]); e.target.value = '' }} />
+                    {showPreview ? <img className="ws-portrait-thumb" src={previewUrl} alt="参考图预览"
+                      referrerPolicy="no-referrer" onError={() => setPortraitPreviewFailed(true)} /> : null}
+                    {portraitPreviewFailed ? <span className="ws-warn ws-small">这张图打不开，请检查地址是否公网可访问。</span> : null}
+                    <span className="ws-muted ws-small">{cloudReady ? '上传后会转存到你的 Cloudinary，再点保存生效。' : '上传本地照片需要先在「图片图床」配置 Cloudinary；也可以直接粘贴图片地址。'}</span>
+                  </div>
+                  <p className="ws-muted ws-small">建议用清晰的正脸半身照（能看到上衣），选「沿用参考图衣服」即可保留原穿搭；如果只传了头像，下面服装改选「简约纯色上衣」。留空则每次随机生成人物。</p>
+                  <label className="ws-field"><span>人物性别</span>
+                    <select value={personaValue.gender} onChange={e => setPersona({ ...persona, gender: e.target.value })}>
+                      <option value="auto">自动（按参考图）</option><option value="male">男</option><option value="female">女</option>
+                    </select>
+                  </label>
+                  <label className="ws-field"><span>服装</span>
+                    <select value={personaValue.outfit} onChange={e => setPersona({ ...persona, outfit: e.target.value })}>
+                      <option value="photo">沿用参考图衣服（适合半身照）</option>
+                      <option value="simple">简约纯色上衣（适合只有头像）</option>
+                      <option value="custom">自定义描述</option>
+                    </select>
+                  </label>
+                  {personaValue.outfit === 'custom' ? <label className="ws-field"><span>服装描述</span>
+                    <textarea rows={3} maxLength={300} value={personaValue.outfitText}
+                      placeholder="例如：午夜绿（#004953）宽松华夫格短袖 Polo，落肩，领口敞开"
+                      onChange={e => setPersona({ ...persona, outfitText: e.target.value })} />
+                  </label> : null}
+                  <label className="ws-field"><span>外貌补充</span>
+                    <input maxLength={120} value={personaValue.appearance} placeholder="例如：短黑发，戴细黑框眼镜（没有参考图或羊毛毡风格时使用）"
+                      onChange={e => setPersona({ ...persona, appearance: e.target.value })} />
+                  </label>
+                </>
+              })()}
             </fieldset>
             <fieldset className="ws-group ws-settings-fields" hidden={page !== 'storage'}>
               {['cloudName', 'apiKey', 'apiSecret'].map((field, index) => (

@@ -11,7 +11,7 @@ import { coverDownloadName, generateArkCover, generateBailianCover, readCover, s
 import { BAILIAN_SIZES, modelsFor, providerFormats } from '../src/cover-options.js'
 import { COVER_STYLES } from '../src/cover-styles.js'
 import { PNG } from 'pngjs'
-import { publicSettings, readSettings, updateSettings } from '../src/settings.js'
+import { AUTHOR_SAMPLE_PORTRAIT, publicSettings, readSettings, updateSettings } from '../src/settings.js'
 import { Store } from '../src/store.js'
 
 const DASHSCOPE = 'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation'
@@ -173,9 +173,9 @@ test('封面设置：提供方/模型按白名单校验，密钥不回传明文'
   assert.deepEqual(providerFormats('ark'), ['png', 'jpeg'])
 })
 
-test('封面设置：IP 人物参考图有默认地址，只收 https，留空清除', async () => {
+test('封面设置：IP 人物参考图默认为空，只收 https，留空清除', async () => {
   const root = mkdtempSync(join(tmpdir(), 'ws-portrait-settings-'))
-  assert.equal((await readSettings(root)).portraitUrl, 'https://r2.cloudnative101.net/assets/images/portrait.png')
+  assert.equal((await readSettings(root)).portraitUrl, '', '开源默认不带任何人的照片')
   const pub = publicSettings(await updateSettings(root, { portraitUrl: '  https://example.com/me.png  ' }))
   assert.equal(pub.portraitUrl, 'https://example.com/me.png')
   assert.equal((await readSettings(root)).portraitUrl, 'https://example.com/me.png')
@@ -186,17 +186,41 @@ test('封面设置：IP 人物参考图有默认地址，只收 https，留空�
   assert.equal((await readSettings(root)).portraitUrl, '', '显式清空后不回落到默认地址')
 })
 
+test('设置：persona 校验、保存和公开', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ws-persona-settings-'))
+  assert.deepEqual((await readSettings(root)).persona, { gender: 'auto', outfit: 'photo', outfitText: '', appearance: '' })
+  const saved = await updateSettings(root, { persona: { gender: 'female', outfit: 'custom', outfitText: ' 米白色亚麻衬衫 ', appearance: '齐肩黑发' } })
+  assert.deepEqual(publicSettings(saved).persona, { gender: 'female', outfit: 'custom', outfitText: '米白色亚麻衬衫', appearance: '齐肩黑发' })
+  assert.deepEqual((await readSettings(root)).persona.outfitText, '米白色亚麻衬衫')
+  await assert.rejects(updateSettings(root, { persona: { outfit: 'custom', outfitText: '  ' } }), /服装描述/)
+  await assert.rejects(updateSettings(root, { persona: { gender: 'robot' } }), /性别/)
+  const partial = await updateSettings(root, { persona: { gender: 'male' } })
+  assert.equal(partial.persona.outfitText, '米白色亚麻衬衫', '只改性别时保留其他字段')
+  await assert.rejects(updateSettings(root, { persona: { outfitText: 'an excited smile' } }), /服装描述里有封面禁用词「excited」/)
+  await assert.rejects(updateSettings(root, { persona: { appearance: '眼神发亮' } }), /外貌补充里有封面禁用词/)
+  assert.equal((await readSettings(root)).persona.outfitText, '米白色亚麻衬衫', '校验失败不落盘')
+})
+
+test('设置：已落盘的作者示例照片保留，但标记出来', async () => {
+  const { writeFile } = await import('node:fs/promises')
+  const root = mkdtempSync(join(tmpdir(), 'ws-author-portrait-'))
+  await writeFile(join(root, 'settings.json'), JSON.stringify({ portraitUrl: AUTHOR_SAMPLE_PORTRAIT }))
+  const settings = await readSettings(root)
+  assert.equal(settings.portraitUrl, AUTHOR_SAMPLE_PORTRAIT, '不静默清空，作者本机还要用')
+  assert.equal(publicSettings(settings).portraitIsAuthorSample, true)
+  assert.equal(publicSettings(await updateSettings(root, { portraitUrl: 'https://example.com/me.png' })).portraitIsAuthorSample, false)
+})
+
 // 读真实模板数出占位符个数，再挑一个不含禁用词的填充值，让 coverPrompt 校验通过。
 async function coverLLM(style = 'classic') {
   const templateName = style === 'classic' ? 'prompt_template.md' : `prompt_template_${style}.md`
   const template = await readFile(join(COVER_SKILL_DIR, `references/${templateName}`), 'utf8')
   const body = template.match(/^```[^\n]*\n([\s\S]*?)^```[ \t]*$/m)?.[1]?.trim()
-  const slotCount = [...body.matchAll(/\{\{([^{}]+)\}\}/g)].length
   const terms = (await readFile(join(COVER_SKILL_DIR, 'references/blocklist.txt'), 'utf8'))
     .split(/\r?\n/).map(line => line.trim().toLowerCase()).filter(line => line && !line.startsWith('#'))
   let filler = '封面示例'
   while (terms.some(term => filler.toLowerCase().includes(term))) filler += '字'
-  const values = Array.from({ length: slotCount }, () => filler)
+  const values = [...body.matchAll(/\{\{([^{}]+)\}\}/g)].map(match => (match[1].startsWith('人物段') ? '无人物' : filler))
   return { prepareCall: async () => ({ config: {}, async *stream() { yield { type: 'text-delta', text: JSON.stringify({ values }) }; yield { type: 'finish', reason: { kind: 'stop' } } } }) }
 }
 
@@ -322,21 +346,60 @@ test('封面模板：每种风格都有带占位符的提示词代码块', async
   }
 })
 
-test('颗粒海报：人物外观以参考图为准，不固定年龄和发色', async () => {
-  const template = await readFile(join(COVER_SKILL_DIR, 'references/prompt_template_grunge.md'), 'utf8')
-  assert.ok(!template.includes('30-something'))
-  assert.ok(!template.includes('short black hair'))
-  assert.match(template, /matching the reference image/)
-  assert.match(template, /facial features, hair color, hairstyle and glasses/)
+const PERSON_TEMPLATES = {
+  'prompt_template.md': ['[[SUBJECT]]', '[[OUTFIT]]'],
+  'prompt_template_editorial.md': ['[[SUBJECT]]', '[[OUTFIT]]'],
+  'prompt_template_campaign.md': ['[[SUBJECT]]', '[[OUTFIT]]'],
+  'prompt_template_kinetic.md': ['[[SUBJECT]]', '[[OUTFIT]]'],
+  'prompt_template_grunge.md': ['[[SUBJECT]]', '[[OUTFIT]]'],
+  'prompt_template_magenta.md': ['[[人物]]', '[[服装]]'],
+  'prompt_template_felt.md': [],
+}
+const HARDCODED = /midnight green|#004953|#1E3329|午夜绿|asian male|男性程序员|深灰色圆领|深灰 ?T ?恤|深绿圆领|thin black wire-frame|薄黑圆框眼镜|waffle|华夫格|\bpolo\b|\bLQ\b/i
+
+test('封面模板：人物和服装只来自宿主占位符', async () => {
+  for (const [name, markers] of Object.entries(PERSON_TEMPLATES)) {
+    const template = await readFile(join(COVER_SKILL_DIR, `references/${name}`), 'utf8')
+    const body = template.match(/^```[^\n]*\n([\s\S]*?)^```[ \t]*$/m)?.[1] ?? ''
+    for (const marker of markers) assert.ok(body.includes(marker), `${name} 的代码块缺少 ${marker}`)
+    assert.ok(!HARDCODED.test(template), `${name} 还写死了人物或服装：${template.match(HARDCODED)?.[0]}`)
+    assert.ok(!/\{\{服装/.test(body), `${name} 不应再让 LLM 选服装`)
+  }
+  const felt = await readFile(join(COVER_SKILL_DIR, 'references/prompt_template_felt.md'), 'utf8')
+  assert.match(felt.match(/^```[^\n]*\n([\s\S]*?)^```[ \t]*$/m)[1], /\{\{人物段:只填「无人物」或「玩偶」/)
+  const skill = await readFile(join(COVER_SKILL_DIR, 'SKILL.md'), 'utf8')
+  assert.ok(!HARDCODED.test(skill), `SKILL.md 还写死了：${skill.match(HARDCODED)?.[0]}`)
 })
 
-test('其他真人海报：不指定固定年龄，外观年龄以参考图为准', async () => {
-  for (const name of ['prompt_template.md', 'prompt_template_editorial.md', 'prompt_template_campaign.md', 'prompt_template_kinetic.md']) {
-    const template = await readFile(join(COVER_SKILL_DIR, `references/${name}`), 'utf8')
-    assert.ok(!template.includes('30-something'), name)
-    assert.match(template, /matching the reference image/, name)
-    assert.match(template, /apparent age and facial features/, name)
-  }
+test('封面路由：按设置填人物，半身照沿用照片服装，felt 不提参考图', async () => {
+  const png = makePng(94, 40)
+  const calls = []
+  const fetchImpl = async (url, init) => { calls.push({ url, init }); return { ok: true, status: 200, json: async () => ({ data: [{ b64_json: png.toString('base64') }] }) } }
+
+  const withPhoto = await coverHost({ provider: 'ark', key: 'sk-ark', fetchImpl, llm: await coverLLM('magenta') })
+  await updateSettings(withPhoto.store.root, { portraitUrl: 'https://example.com/me.png', persona: { gender: 'female', outfit: 'photo' } })
+  await withPhoto.request('cover/generate', { id: withPhoto.article.id, style: 'magenta', resolution: '2K', count: 1, format: 'png' })
+  await waitCover(withPhoto.request)
+  const sent = JSON.parse(calls.at(-1).init.body)
+  assert.equal(sent.image, 'https://example.com/me.png')
+  assert.match(sent.prompt, /与参考图完全一致的同一套衣服/)
+  assert.ok(!/T 恤|针织上衣/.test(sent.prompt), '沿用参考图衣服时不夹带兜底服装词')
+  assert.ok(!/\[\[/.test(sent.prompt))
+
+  await updateSettings(withPhoto.store.root, { persona: { outfit: 'simple' } })
+  await withPhoto.request('cover/generate', { id: withPhoto.article.id, style: 'magenta', resolution: '2K', count: 1, format: 'png' })
+  await waitCover(withPhoto.request)
+  const simpleSent = JSON.parse(calls.at(-1).init.body)
+  assert.match(simpleSent.prompt, /针织上衣/, '简约纯色上衣按女性性别生成')
+  assert.ok(!/与参考图完全一致/.test(simpleSent.prompt))
+
+  const felt = await coverHost({ provider: 'ark', key: 'sk-ark', fetchImpl, llm: await coverLLM('felt') })
+  await updateSettings(felt.store.root, { portraitUrl: 'https://example.com/me.png', persona: { gender: 'male', outfit: 'custom', outfitText: '藏青色牛仔衬衫' } })
+  await felt.request('cover/generate', { id: felt.article.id, style: 'felt', resolution: '2K', count: 1, format: 'png' })
+  await waitCover(felt.request)
+  const feltBody = JSON.parse(calls.at(-1).init.body)
+  assert.equal(feltBody.image, undefined)
+  assert.ok(!/参考图/.test(feltBody.prompt), 'felt 不带参考图，提示词里也不该提参考图')
 })
 
 test('封面路由：felt 风格不传真人参考图', async () => {

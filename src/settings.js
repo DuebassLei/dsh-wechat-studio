@@ -1,4 +1,6 @@
 import { COVER_PROVIDERS, modelsFor } from './cover-options.js'
+import { DEFAULT_PERSONA, normalizePersona, PERSONA_GENDERS, PERSONA_OUTFITS } from './cover-persona.js'
+import { findBlocked, loadCoverBlocklist } from './cover-prompt.js'
 // 设置：存在 <DSH_HOME>/wechat-studio/settings.json（权限 600）。
 // 朱雀 API Key 只留在本机，接口从不把明文返回给页面，只说「有没有」和末四位。
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
@@ -13,7 +15,9 @@ const DEFAULT_BRAND = {
   slogan: '我是林月半子，教你用AI干掉90%的重复劳动',
 }
 
-const DEFAULT_PORTRAIT = 'https://r2.cloudnative101.net/assets/images/portrait.png'
+// 旧版的默认参考图（插件作者本人）。旧版每次保存设置都会把它写进 settings.json，
+// 所以不能只删默认值：保留它，但在页面上提醒不是作者本人的用户换掉。
+export const AUTHOR_SAMPLE_PORTRAIT = 'https://r2.cloudnative101.net/assets/images/portrait.png'
 
 const brandField = (value, limit) => typeof value === 'string' ? value.trim().slice(0, limit) : ''
 
@@ -37,7 +41,8 @@ export async function readSettings(root) {
     coverProvider: COVER_PROVIDERS.some(provider => provider.id === saved.coverProvider) ? saved.coverProvider : 'ark',
     bailianModel: modelsFor('bailian').find(model => model.id === saved.bailianModel)?.id ?? modelsFor('bailian')[0].id,
     bailianKey: typeof saved.bailianKey === 'string' ? saved.bailianKey : '',
-    portraitUrl: typeof saved.portraitUrl === 'string' ? saved.portraitUrl : DEFAULT_PORTRAIT,
+    portraitUrl: typeof saved.portraitUrl === 'string' ? saved.portraitUrl : '',
+    persona: normalizePersona(saved.persona),
     cloudinary: {
       cloudName: typeof saved.cloudinary?.cloudName === 'string' ? saved.cloudinary.cloudName : '',
       apiKey: typeof saved.cloudinary?.apiKey === 'string' ? saved.cloudinary.apiKey : '',
@@ -94,6 +99,20 @@ export async function updateSettings(root, body) {
     }
     next.portraitUrl = value
   }
+  if (body.persona && typeof body.persona === 'object') {
+    const merged = { ...next.persona, ...body.persona }
+    if (!PERSONA_GENDERS.includes(merged.gender)) throw Object.assign(new Error('请选择有效的人物性别。'), { status: 400 })
+    if (!PERSONA_OUTFITS.includes(merged.outfit)) throw Object.assign(new Error('请选择有效的服装来源。'), { status: 400 })
+    const persona = normalizePersona(merged)
+    if (persona.outfit === 'custom' && !persona.outfitText) throw Object.assign(new Error('选了自定义服装时，请填写服装描述。'), { status: 400 })
+    const terms = await loadCoverBlocklist()
+    const fields = persona.outfit === 'custom' ? [['outfitText', '服装描述'], ['appearance', '外貌补充']] : [['appearance', '外貌补充']]
+    for (const [field, label] of fields) {
+      const blocked = findBlocked(terms, persona[field])
+      if (blocked) throw Object.assign(new Error(`${label}里有封面禁用词「${blocked}」，请换成克制的说法。`), { status: 400 })
+    }
+    next.persona = persona
+  }
   if (body.cloudinary && typeof body.cloudinary === 'object') {
     for (const field of ['cloudName', 'apiKey', 'apiSecret']) {
       if (typeof body.cloudinary[field] === 'string') next.cloudinary[field] = body.cloudinary[field].trim().slice(0, 400)
@@ -128,6 +147,8 @@ export function publicSettings(settings) {
     bailianModel: settings.bailianModel,
     bailianKeySet: Boolean(settings.bailianKey),
     portraitUrl: settings.portraitUrl,
+    persona: settings.persona ?? DEFAULT_PERSONA,
+    portraitIsAuthorSample: settings.portraitUrl === AUTHOR_SAMPLE_PORTRAIT,
     cloudinary: {
       cloudName: settings.cloudinary?.cloudName ?? '',
       apiKey: settings.cloudinary?.apiKey ?? '',

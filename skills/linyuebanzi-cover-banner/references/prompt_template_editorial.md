@@ -20,28 +20,15 @@ COLOR SYSTEM (fixed, do not change):
 OVERALL COMPOSITION:
 - Wide horizontal banner on clean off-white paper background
 - Left 55-60% area: huge bold black Chinese typography, left-aligned
-- Right 40% area: a real-photo-style half-body portrait of an Asian male tech blogger + one floating white app window card
+- Right 40% area: a real-photo-style half-body portrait of the person described in SUBJECT + one floating white app window card
 - Flat geometric Klein blue shapes as accents: one large solid blue shape behind the right side of the canvas, plus 1-2 smaller blue triangle / wedge accents
 - Thin black hairline rules and letter-spaced uppercase English micro-labels placed in corners as editorial furniture
 - Generous negative space, crisp edges, magazine layout discipline
 
 SUBJECT (RIGHT SIDE):
-- An Asian male matching the reference image, looking like a senior software engineer turned content creator; preserve the reference person's apparent age and facial features
-- Wearing an OVERSIZED, RELAXED-FIT, heavyweight waffle-knit short-sleeve polo shirt in Midnight Green color (#004953, deep dark green with subtle teal undertone)
-
-  CRITICAL FIT DETAILS — this is NOT a standard fitted polo:
-  - EXTREMELY relaxed, oversized silhouette — the shirt drapes loosely on the body, not hugging it
-  - DROPPED SHOULDERS: the shoulder seam falls noticeably below the actual shoulder point, creating natural sagging fabric folds at the shoulder area
-  - WIDE, LONG SLEEVES: short sleeves that hang loose and extend down to just above the elbow, with wide sleeve openings
-  - DEEP V OPENING: the collar is wide and open, BOTH buttons completely undone, creating a relaxed deep V-neckline that exposes the upper chest area
-  - Visible diagonal draping wrinkles from the oversized fit
-
-  FABRIC DETAILS:
-  - Heavyweight cotton waffle-knit fabric, very thick and structured
-  - HIGHLY VISIBLE waffle texture: prominent grid-like raised pattern across the entire shirt
-  - The dark green color: rich, slightly muted, similar to iPhone 11 Pro Midnight Green
-
-- Glasses: thin black wire-frame
+- [[SUBJECT]]
+- Wearing [[OUTFIT]]
+- Keep this outfit unchanged in every pose; do not swap it for other clothing
 - Facial expression: {{表情:calm, thoughtful, slight smile / focused, confident / quietly amused — 用克制表达,不要写 blocklist 里的词(excited/shocked 等),即使是否定写法也会被脚本拦截}}
 - Half-body shot, positioned on the right 1/3 of the canvas, standing in front of the large blue geometric shape
 - Interaction: {{动作模式:pointing at the floating app window / open palm presenting the window / lightly tapping the window surface}}
@@ -75,7 +62,7 @@ STYLE NOTES:
 - Bright high-key overall exposure, clean white-ish background with subtle paper texture
 - Flat vector-like blue geometric shapes, crisp edges, no gradients on the shapes
 - No terminal code background, no dark ambience, no glow effects
-- Main color palette: off-white, black, Klein blue, midnight green polo — nothing else
+- Main color palette: off-white, black, Klein blue, the person's outfit — nothing else
 - No exaggerated facial expressions
 - No author watermark or signature text
 - Vibe: a sharp young tech editor presenting a finding, magazine-cover confidence
@@ -126,7 +113,7 @@ editorial 风的"三标签"是 2-3 组英文胶囊小标签,letter-spaced 大写
 1. 米白纸感底 `#F4F3EF`,明亮高调,**禁止深色底**
 2. 强调色只有克莱因蓝 `#1F4FE0`,高亮词和几何块共用,**禁止第二种强调色**
 3. 几何块是平的纯色块, crisp edges,**禁止渐变和发光**
-4. 共享 IP 基线:人物、午夜绿 Polo、左字右人、克制表情(见 SKILL.md)
+4. 共享 IP 基线:左字右人、克制表情(人物与服装来自用户设置,见 SKILL.md)
 5. 禁止:终端代码背景、暗色氛围、glow 特效、夸张表情
 
 ## 自检三问

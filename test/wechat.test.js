@@ -64,10 +64,14 @@ test('placeholderPng 是合法的 PNG 头', async () => {
   assert.equal(raw[2700], 38)
 })
 
-test('latestCover 选最新的封面 run', () => {
+test('latestCover 优先用「设为当前封面」选中的 cover，没有再回退到最新一批', () => {
   const article = { coverRuns: [{ images: [] }, { images: [{ id: 'old' }], format: 'png' }, { images: [{ id: 'new' }], format: 'jpeg' }] }
   assert.deepEqual(latestCover(article), { id: 'new', format: 'jpeg' })
   assert.equal(latestCover({}), null)
+  // 用户在封面历史里点过「设为当前封面」，即使它不是最新生成的也要优先
+  const selected = { ...article, cover: { id: 'picked', format: 'png' } }
+  assert.deepEqual(latestCover(selected), { id: 'picked', format: 'png' })
+  assert.deepEqual(latestCover({ cover: { id: 'picked' } }), { id: 'picked', format: 'png' })
 })
 
 const TOKEN_CALLS = () => [['https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential', Response.json({ access_token: 'tok' })]]
@@ -101,9 +105,17 @@ test('pushWechatDraft 用真封面和转存后的正文推草稿', async () => {
     const target = String(url)
     seen.push(target)
     if (target.includes('/cgi-bin/token')) return Response.json({ access_token: 'tok' })
-    if (target.includes('add_material')) return Response.json({ media_id: 'THUMB' })
+    if (target.includes('add_material')) {
+      // add_material 必须带 type=image
+      assert.ok(target.includes('type=image'), `add_material 缺少 type=image：${target}`)
+      return Response.json({ media_id: 'THUMB' })
+    }
     if (target.includes('uploadimg')) return Response.json({ url: 'https://mmbiz.qpic.cn/up.png' })
-    if (target.includes('draft/add')) return Response.json({ media_id: 'DRAFT' })
+    if (target.includes('draft/add')) {
+      const payload = JSON.parse(init.body)
+      assert.equal(payload.articles[0].title.length, 32) // draft/add 的 title 上限 32 字
+      return Response.json({ media_id: 'DRAFT' })
+    }
     if (target.startsWith('https://good.com')) return new Response(Buffer.from('image-bytes'), { headers: { 'content-type': 'image/png' } })
     throw new Error(`unexpected ${target}`)
   }
@@ -120,6 +132,35 @@ test('pushWechatDraft 用真封面和转存后的正文推草稿', async () => {
   assert.ok(draft.includes('access_token=tok'))
   assert.ok(seen.some(u => u.includes('add_material')))
   assert.ok(seen.some(u => u.includes('uploadimg')))
+})
+
+test('rewriteContentImages 拒绝 GIF、超大图和内网地址，并跟进重定向后仍校验', async () => {
+  const warnings = []
+  const upload = () => Response.json({ url: 'https://mmbiz.qpic.cn/uploaded.png' })
+  const wrap = fetchImpl => async (url, init) => {
+    if (String(url).startsWith('https://api.weixin.qq.com')) return upload()
+    return fetchImpl(url, init)
+  }
+  const push = async html => (await rewriteContentImages(html, { token: 'tok', fetchImpl: wrap(async url => {
+    if (String(url).includes('gif.com')) return new Response(Buffer.from('g'), { headers: { 'content-type': 'image/gif' } })
+    if (String(url).includes('big.com')) return new Response(Buffer.alloc(1_100_000), { headers: { 'content-type': 'image/png' } })
+    if (String(url).includes('jump.com')) return new Response(null, { status: 302, headers: { location: 'http://127.0.0.1/secret.png' } })
+    if (String(url).includes('192.168.1.5')) return new Response(Buffer.from('x'), { headers: { 'content-type': 'image/png' } })
+    if (String(url).includes('good.com')) return new Response(Buffer.from('ok'), { headers: { 'content-type': 'image/png' } })
+    throw new Error(`unexpected ${url}`)
+  })})).warnings
+  warnings.push(...await push('<img src="https://gif.com/a.gif">'))
+  assert.match(warnings.at(-1), /JPG\/PNG/)
+  warnings.push(...await push('<img src="https://big.com/a.png">'))
+  assert.match(warnings.at(-1), /1 MB/)
+  warnings.push(...await push('<img src="http://192.168.1.5/a.png">'))
+  assert.match(warnings.at(-1), /内网/)
+  // 302 重定向到内网地址也要被拦下
+  warnings.push(...await push('<img src="https://jump.com/a.png">'))
+  assert.match(warnings.at(-1), /内网/)
+  // 正常公网图不受影响
+  const ok = await rewriteContentImages('<img src="https://good.com/a.png">', { token: 'tok', fetchImpl: wrap(async () => new Response(Buffer.from('ok'), { headers: { 'content-type': 'image/png' } })) })
+  assert.equal(ok.warnings.length, 0)
 })
 
 test('pushWechatDraft 封面没有时用占位图并提醒', async () => {

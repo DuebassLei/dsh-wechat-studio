@@ -1127,7 +1127,14 @@ export async function route(deps, req, res) {
       if (typeof body.html !== 'string' || !body.html.trim()) throw Object.assign(new Error('没有要推送的正文，先回到排版预览再推送。'), { status: 400 })
       const settings = await readSettings(store.root)
       const cover = latestCover(article)
-      const coverImage = cover ? { buffer: await readCover(store.root, cover.id, cover.format), format: cover.format } : null
+      let coverImage = null
+      if (cover) {
+        try {
+          coverImage = { buffer: await readCover(store.root, cover.id, cover.format), format: cover.format }
+        } catch {
+          // 本地封面文件缺失时降级用占位图，推送照常进行
+        }
+      }
       const result = await pushWechatDraft({ article, html: body.html, settings, cover: coverImage, fetchImpl: deps.fetchImpl })
       // 返回完整快照和其它 act 一样，warnings 让页面在推送成功后也能看到占位封面这类提醒
       return json(res, 200, { ...(await snapshotState(ctx, store, pipeline)), ok: true, mediaId: result.mediaId, warnings: result.warnings })

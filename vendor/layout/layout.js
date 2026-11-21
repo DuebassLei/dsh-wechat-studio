@@ -1528,11 +1528,15 @@ function renderReview(){
   document.getElementById('review-stats').textContent=D.review?.stats||'';
 }
 let copyFallback=false;
-reviewCopy.onclick=()=>copyAll(document.getElementById('copy-all'),true,copyFallback);
+function setReviewCopyAction(action){reviewAction=action;reviewCopy.textContent=action=='draft'?'确认并推送草稿箱':'确认并复制全文'}
+reviewCopy.onclick=()=>{
+  if(reviewAction=='draft'){setReviewCopyAction(null);pushDraft(document.getElementById('push-draft'),true);return;}
+  setReviewCopyAction(null);copyAll(document.getElementById('copy-all'),true,copyFallback);
+};
 for(const panel of popovers)panel.addEventListener('toggle',()=>{
   if(panel.open)for(const other of popovers){if(other!==panel)other.open=false;}
 });
-review.addEventListener('toggle',()=>{if(!review.open){reviewCopy.hidden=true;reviewAction=null}});
+review.addEventListener('toggle',()=>{if(!review.open){reviewCopy.hidden=true;setReviewCopyAction(null)}});
 function render(){const p=parts(esc(G.value.trim()||''));document.getElementById('pv').innerHTML=(p.banner?'<section style="margin:0 0 24px">'+p.banner+'</section>':'')+p.body;
   document.getElementById('sts').innerHTML=Object.keys(D.styles).map(k=>'<button type="button" class="sw st'+(k==style?' on':'')+'" title="'+D.style_desc[k]+'" onclick="pickS(\''+k+'\')">'+D.style_names[k]+'</button>').join('');
   document.getElementById('sws').innerHTML=Object.keys(D.palette).map(k=>'<button type="button" class="sw'+(k==theme?' on':'')+'" onclick="pick(\''+k+'\')"><i style="background:'+D.palette[k].main+'"></i>'+D.names[k]+'</button>').join('');renderReview()}
@@ -1578,7 +1582,7 @@ async function put(h){const t=h.replace(/<[^>]+>/g,'');if(legacy(h,t))return tru
 function manual(p){const d=document.getElementById('manual');const t=d.querySelector('textarea');t.value=p;d.style.display='flex';t.focus();t.select()}
 async function send(b,h,what){if(await put(h)){flash(b,'已复制 ✓');msg('已复制'+what+'（'+D.style_names[style]+' · '+D.names[theme]+'），去公众号编辑器正文里粘贴',true)}else{msg('这个窗口不允许写剪贴板：请用 Chrome 直接打开本文件',false);manual(h)}}
 async function copyAll(b,confirmed=false,fallback=false){const p=need(null,fallback,()=>copyAll(b,confirmed,true));if(!p)return;
-  if(!confirmed&&D.review?.before.length){copyFallback=fallback;reviewCopy.hidden=false;review.open=true;return;}
+  if(!confirmed&&D.review?.before.length){copyFallback=fallback;setReviewCopyAction('copy');reviewCopy.hidden=false;review.open=true;return;}
   copyFallback=false;review.open=false;send(b,(p.banner?'<section style="margin:0 0 24px">'+p.banner+'</section>':'')+p.body,'全文')}
 async function copyMd(b){const t=D.md||'';let ok=false;
   try{await navigator.clipboard.writeText(t);ok=true}catch(e){}
@@ -1586,8 +1590,8 @@ async function copyMd(b){const t=D.md||'';let ok=false;
   if(ok){flash(b,'已复制 ✓');msg('已复制 Markdown（'+t.length+' 字），可以贴到朱雀做检测',true)}else{msg('浏览器没让写剪贴板，请手动复制',false);manual(t)}}
 async function copyPart(b,k,fallback=false){const p=need(k,fallback,()=>copyPart(b,k,true));if(!p)return;if(!p[k]){msg('这篇没有横幅',false);return}send(b,p[k],k=='banner'?'横幅':'正文')}
 let reviewAction=null;
-async function pushDraft(b,confirmed=false){const p=need();if(!p)return;
-  if(!confirmed&&D.review?.before.length){reviewAction='draft';reviewCopy.hidden=false;review.open=true;return;}
+async function pushDraft(b,confirmed=false,fallback=false){const p=need(null,fallback,()=>pushDraft(b,confirmed,true));if(!p)return;
+  if(!confirmed&&D.review?.before.length){setReviewCopyAction('draft');reviewCopy.hidden=false;review.open=true;return;}
   review.open=false;
   if(!saveLayoutPreferences){msg('请从工作台里打开排版预览再推送',false);return;}
   const label=b.textContent;b.disabled=true;b.textContent='推送中…';

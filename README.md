@@ -259,6 +259,7 @@ an OVERSIZED, RELAXED-FIT heavyweight waffle-knit short-sleeve polo shirt in Mid
 | `covers/` | 生成的封面图片 |
 | `inline-images/` | 已生成但独立保存的正文插图 PNG 资产；清理不再引用的文件和崩溃遗留的孤儿文件 |
 | `skills/` | 用户覆盖技能、插图风格扩展，以及确认写入的复盘规则 |
+| `style-profile.json` | 个人写作风格档案与生效记录（在「技能 → 我的写作风格」里导入过往文章生成，可编辑风格体检卡、现场试写并随时一键恢复默认风格） |
 
 **升级与降级**
 

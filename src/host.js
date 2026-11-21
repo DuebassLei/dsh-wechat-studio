@@ -26,6 +26,8 @@ import { createVersionChecker } from './version.js'
 import { detect } from './zhuque.js'
 import { draftSvgCard, insertSvgCard, previewSvgCard } from './svg-cards.js'
 import { latestCover, pushWechatDraft, verifyCredentials } from './wechat.js'
+import { normalizeStyleProfile } from './writing-style-shared.js'
+import { analyzeWritingStyle, applyWritingStyle, previewWritingStyle, readStyleState, renderHeadlineSkill, renderWriterSkill, restoreDefaultStyle } from './writing-style.js'
 
 const MAX_JSON = 2_000_000
 const MAX_PDF = 30_000_000
@@ -381,15 +383,30 @@ function view(article, pipeline, store, inlineStyles = [], inlineStyleWarnings =
   }
 }
 
+async function renderStylePreviewMarkdown(storeRoot, profile) {
+  if (!profile) return null
+  const existingHeadline = await readFile(join(storeRoot, 'skills', 'headline.md'), 'utf8').catch(() => '')
+  return {
+    writer: renderWriterSkill(profile),
+    headline: renderHeadlineSkill(profile, existingHeadline),
+  }
+}
+
 async function snapshotState(ctx, store, pipeline) {
   const state = await store.read()
   const current = state.articles.find(a => a.id === state.currentId && !a.archivedAt) ?? null
   const info = modelInfo(ctx)
-  const [settings, inlineCatalog] = await Promise.all([readSettings(store.root), readInlineStyleCatalog(join(store.root, 'skills'))])
+  const [settings, inlineCatalog, styleState] = await Promise.all([
+    readSettings(store.root),
+    readInlineStyleCatalog(join(store.root, 'skills')),
+    readStyleState(store.root),
+  ])
   return {
     brand: settings.brand,
     zhuqueReady: Boolean(settings.zhuqueKey),
     cloudinaryReady: Boolean(settings.cloudinary?.cloudName && settings.cloudinary?.apiKey && settings.cloudinary?.apiSecret),
+    hasPersonalStyle: styleState.active,
+    personalStyleScopes: styleState.scopes,
     articles: state.articles.map(article => listMeta(article, { bannerReady: bannerView(article).ready })).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
     current: view(current, pipeline, store, inlineCatalog.styles, inlineCatalog.warnings, settings),
     model: info ? info.model : null, modelPinned: Boolean(modelOverride()), modelOk: modelStatus.ok, modelError: modelStatus.error,
@@ -464,6 +481,13 @@ export async function route(deps, req, res) {
     if (path === 'skills') {
       const dir = join(store.root, 'skills')
       return json(res, 200, { dir, skills: await skillSources(dir) })
+    }
+    if (path === 'style/profile') {
+      const styleState = await readStyleState(store.root)
+      return json(res, 200, {
+        ...styleState,
+        previewMarkdown: await renderStylePreviewMarkdown(store.root, styleState.profile),
+      })
     }
     if (path === 'insights/data') return json(res, 200, await insightsView(deps, url.searchParams.get('range')))
     const article = mustFind(await store.read(), url.searchParams.get('id'))
@@ -1149,6 +1173,73 @@ export async function route(deps, req, res) {
       const [insights, state] = await Promise.all([deps.insightsStore.read(), store.read()])
       const result = await applyRule(insights, state.articles, String(body.ruleId ?? ''), join(store.root, 'skills'), body.range)
       return json(res, 200, result)
+    }
+    case 'style/analyze': {
+      const [state, settings] = await Promise.all([store.read(), readSettings(store.root)])
+      const ids = Array.isArray(body.articleIds) ? body.articleIds : []
+      const fromStore = ids
+        .map(id => state.articles.find(a => a.id === id && !a.archivedAt))
+        .filter(Boolean)
+        .map(article => ({ title: article.title || article.topic || '未命名文章', text: toMarkdown(article) }))
+      const pasted = (Array.isArray(body.pasted) ? body.pasted : [])
+        .map(item => ({ title: String(item?.title ?? ''), text: String(item?.text ?? '') }))
+      const controller = new AbortController()
+      const onClose = () => { if (!res.writableEnded) controller.abort() }
+      res.on?.('close', onClose)
+      try {
+        const result = await analyzeWritingStyle(ctx, [...fromStore, ...pasted], {
+          userNote: body.userNote,
+          fixedLines: settings.fixedLines,
+          signal: controller.signal,
+        })
+        return json(res, 200, {
+          ...result,
+          previewMarkdown: await renderStylePreviewMarkdown(store.root, result.profile),
+        })
+      } finally {
+        res.off?.('close', onClose)
+      }
+    }
+    case 'style/render': {
+      const profile = normalizeStyleProfile(body.profile)
+      return json(res, 200, {
+        profile,
+        previewMarkdown: await renderStylePreviewMarkdown(store.root, profile),
+      })
+    }
+    case 'style/preview': {
+      const profile = normalizeStyleProfile(body.profile)
+      const controller = new AbortController()
+      const onClose = () => { if (!res.writableEnded) controller.abort() }
+      res.on?.('close', onClose)
+      try {
+        const result = await previewWritingStyle(ctx, profile, body.topic, { signal: controller.signal })
+        return json(res, 200, {
+          ...result,
+          previewMarkdown: await renderStylePreviewMarkdown(store.root, profile),
+        })
+      } finally {
+        res.off?.('close', onClose)
+      }
+    }
+    case 'style/apply': {
+      const result = await applyWritingStyle(store.root, body.profile, {
+        scopes: body.scopes,
+        sampleTitles: body.sampleTitles,
+      })
+      return json(res, 200, {
+        ...result,
+        previewMarkdown: await renderStylePreviewMarkdown(store.root, result.state.profile),
+        skills: await skillSources(join(store.root, 'skills')),
+      })
+    }
+    case 'style/restore': {
+      const result = await restoreDefaultStyle(store.root, { restoreBackup: body.restoreBackup === true })
+      return json(res, 200, {
+        ...result,
+        previewMarkdown: await renderStylePreviewMarkdown(store.root, result.state.profile),
+        skills: await skillSources(join(store.root, 'skills')),
+      })
     }
     default:
       return json(res, 404, { error: '没有这个接口' })

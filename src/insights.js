@@ -357,6 +357,17 @@ function ruleSection(rule, window) {
   return lines.join('\n')
 }
 
+export function extractInsightsSection(base) {
+  const lines = String(base ?? '').replace(/\r\n?/g, '\n').split('\n')
+  const start = lines.findIndex(line => /^## 数据复盘规则\s*$/.test(line))
+  if (start === -1) return null
+  let end = lines.length
+  for (let i = start + 1; i < lines.length; i++) {
+    if (/^## /.test(lines[i])) { end = i; break }
+  }
+  return lines.slice(start, end).join('\n').trimEnd()
+}
+
 function replaceSection(base, section) {
   const lines = base.split('\n')
   const start = lines.findIndex(line => /^## 数据复盘规则\s*$/.test(line))
@@ -368,6 +379,8 @@ function replaceSection(base, section) {
   lines.splice(start, end - start, ...section.split('\n'))
   return lines.join('\n')
 }
+
+export { replaceSection as replaceInsightsSection }
 
 async function readSkillRaw(skillsDir, name) {
   for (const dir of [skillsDir, BUNDLED]) {
